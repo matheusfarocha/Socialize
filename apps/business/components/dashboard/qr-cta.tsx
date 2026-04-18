@@ -10,8 +10,8 @@ interface QrCtaProps {
 }
 
 export function QrCta({ venueSlug = "demo-venue", venueName = "The Modern Hearth" }: QrCtaProps) {
-  const customerUrl = `${window.location.origin}/c/${venueSlug}`;
   const [open, setOpen] = useState(false);
+  const customerUrl = typeof window !== "undefined" ? `${window.location.origin}/c/${venueSlug}` : "";
   const printRef = useRef<HTMLDivElement>(null);
 
   function handlePrint() {
