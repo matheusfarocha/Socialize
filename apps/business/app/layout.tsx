@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Be_Vietnam_Pro } from "next/font/google";
-import { Sidebar } from "@/components/sidebar";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -28,12 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${plusJakarta.variable} ${beVietnam.variable}`}>
-      <body className="min-h-screen flex">
-        <Sidebar />
-        <main className="ml-64 flex-1 flex flex-col min-h-screen">
-          {children}
-        </main>
-      </body>
+      <body className="min-h-screen flex">{children}</body>
     </html>
   );
 }

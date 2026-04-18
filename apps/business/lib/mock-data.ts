@@ -88,8 +88,6 @@ export const inventoryInsight: InventoryInsight = {
 
 // ── Floor Plan ─────────────────────────────────────────────
 
-export const zones = ["Main Floor", "Patio", "Private Room"];
-
 export interface PaletteTable {
   label: string;
   detail: string;

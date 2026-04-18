@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   BarChart3,
@@ -11,6 +12,7 @@ import {
   Package,
   Settings,
   Plus,
+  LogOut,
 } from "lucide-react";
 
 const navItems = [
@@ -24,6 +26,8 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <nav className="fixed left-0 top-0 h-screen flex flex-col p-6 w-64 bg-surface z-50">
@@ -66,14 +70,26 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="border-t border-outline-variant/20 pt-4">
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 px-4 py-2 rounded-xl text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low transition-colors duration-200 font-headline font-medium text-sm tracking-wide"
+      <div className="border-t border-outline-variant/20 pt-4 relative">
+        <button
+          onClick={() => setSettingsOpen(!settingsOpen)}
+          className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low transition-colors duration-200 font-headline font-medium text-sm tracking-wide"
         >
           <Settings size={20} />
           Settings
-        </Link>
+        </button>
+
+        {settingsOpen && (
+          <div className="absolute bottom-full left-4 mb-2 w-48 bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant/20 overflow-hidden">
+            <button
+              onClick={() => router.push("/login")}
+              className="w-full flex items-center gap-3 px-4 py-3 text-error hover:bg-error-container/30 transition-colors text-sm font-medium"
+            >
+              <LogOut size={18} />
+              Log out
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 flex items-center gap-3 px-4 py-2">

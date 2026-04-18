@@ -1,5 +1,15 @@
-import { Search, DoorOpen } from "lucide-react";
+import { DoorOpen, Save, Loader2 } from "lucide-react";
 import type { PaletteTable, PaletteStructural } from "@/lib/mock-data";
+
+function createDragPreview(label: string): HTMLElement {
+  const el = document.createElement("div");
+  el.textContent = label;
+  el.style.cssText =
+    "padding:6px 12px;border-radius:8px;background:#865300;color:#fff;font-size:12px;font-weight:600;position:absolute;top:-9999px;white-space:nowrap;";
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.remove());
+  return el;
+}
 
 // ── Table shape icons ────────────────────────────────────
 
@@ -7,27 +17,19 @@ function TableIcon({ shape }: { shape: string }) {
   switch (shape) {
     case "round":
       return (
-        <div className="w-12 h-12 rounded-full border-2 border-outline-variant flex items-center justify-center relative">
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute -top-1" />
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute -bottom-1" />
+        <div className="w-12 h-12 rounded-full border-2 border-outline-variant flex items-center justify-center">
           <div className="w-6 h-6 rounded-full bg-surface-container-highest" />
         </div>
       );
     case "square":
       return (
-        <div className="w-12 h-12 rounded-lg border-2 border-outline-variant flex items-center justify-center relative">
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute -left-1" />
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute -right-1" />
+        <div className="w-12 h-12 rounded-lg border-2 border-outline-variant flex items-center justify-center">
           <div className="w-8 h-6 rounded bg-surface-container-highest" />
         </div>
       );
     case "long":
       return (
-        <div className="w-16 h-10 border-2 border-outline-variant rounded-md flex items-center justify-center relative">
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute top-1 -left-1" />
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute bottom-1 -left-1" />
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute top-1 -right-1" />
-          <span className="w-2 h-2 bg-outline-variant rounded-full absolute bottom-1 -right-1" />
+        <div className="w-16 h-10 border-2 border-outline-variant rounded-md flex items-center justify-center">
           <div className="w-12 h-4 rounded-sm bg-surface-container-highest" />
         </div>
       );
@@ -70,11 +72,13 @@ function StructuralIcon({ type }: { type: string }) {
 interface ElementPaletteProps {
   tables: PaletteTable[];
   structural: PaletteStructural[];
+  onSave: () => void;
+  saving: boolean;
 }
 
-export function ElementPalette({ tables, structural }: ElementPaletteProps) {
+export function ElementPalette({ tables, structural, onSave, saving }: ElementPaletteProps) {
   return (
-    <aside className="w-80 bg-surface-container-low h-full flex flex-col pt-6 pb-6 pl-8 pr-6 overflow-y-auto">
+    <aside className="w-72 bg-surface h-full border-l border-outline-variant/10 p-6 flex flex-col overflow-y-auto shadow-sm">
       <div className="mb-6">
         <h3 className="font-headline font-bold text-on-surface text-lg mb-1">
           Elements Palette
@@ -84,14 +88,6 @@ export function ElementPalette({ tables, structural }: ElementPaletteProps) {
         </p>
       </div>
 
-      <div className="bg-surface-container-highest rounded-full flex items-center px-4 py-2 mb-8">
-        <Search size={16} className="text-on-surface-variant mr-2" />
-        <input
-          className="bg-transparent border-none focus:ring-0 focus:outline-none text-sm text-on-surface w-full placeholder-on-surface-variant/70"
-          placeholder="Search tables, chairs..."
-          type="text"
-        />
-      </div>
 
       <div className="space-y-8 flex-1">
         <div>
@@ -107,7 +103,17 @@ export function ElementPalette({ tables, structural }: ElementPaletteProps) {
             {tables.map((t) => (
               <div
                 key={t.label}
-                className="bg-surface hover:bg-surface-container-high rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-grab transition-colors shadow-sm"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    "application/json",
+                    JSON.stringify({ kind: "table", type: t.shape }),
+                  );
+                  e.dataTransfer.effectAllowed = "move";
+                  const preview = createDragPreview(t.label);
+                  e.dataTransfer.setDragImage(preview, preview.offsetWidth / 2, preview.offsetHeight / 2);
+                }}
+                className="bg-surface hover:bg-surface-container-high rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-grab active:cursor-grabbing transition-colors shadow-sm"
               >
                 <TableIcon shape={t.shape} />
                 <span className="text-xs font-medium text-on-surface-variant text-center">
@@ -128,7 +134,17 @@ export function ElementPalette({ tables, structural }: ElementPaletteProps) {
             {structural.map((s) => (
               <div
                 key={s.label}
-                className="bg-surface hover:bg-surface-container-high rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-grab transition-colors shadow-sm"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    "application/json",
+                    JSON.stringify({ kind: "structural", type: s.type }),
+                  );
+                  e.dataTransfer.effectAllowed = "move";
+                  const preview = createDragPreview(s.label);
+                  e.dataTransfer.setDragImage(preview, preview.offsetWidth / 2, preview.offsetHeight / 2);
+                }}
+                className="bg-surface hover:bg-surface-container-high rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-grab active:cursor-grabbing transition-colors shadow-sm"
               >
                 <StructuralIcon type={s.type} />
                 <span className="text-xs font-medium text-on-surface-variant">
@@ -138,6 +154,17 @@ export function ElementPalette({ tables, structural }: ElementPaletteProps) {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="pt-6 mt-auto">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="w-full py-3 bg-primary text-on-primary font-headline font-semibold text-sm rounded-xl shadow-sm hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          {saving ? "Saving..." : "Save Floor Plan"}
+        </button>
       </div>
     </aside>
   );
