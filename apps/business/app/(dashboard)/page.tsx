@@ -11,10 +11,10 @@ export default function DashboardPage() {
   return (
     <>
       <TopBar />
-      <div className="flex-1 pt-24 pb-12 px-8 xl:px-16">
-        <div className="flex justify-between items-end mb-8">
+      <div className="flex-1 mt-[72px] flex flex-col overflow-hidden px-8 xl:px-16 py-6">
+        <div className="flex justify-between items-end mb-5 shrink-0">
           <div>
-            <h2 className="text-3xl font-headline font-bold text-on-surface tracking-tight mb-1">
+            <h2 className="text-2xl font-headline font-bold text-on-surface tracking-tight mb-0.5">
               Morning Overview
             </h2>
             <p className="text-on-surface-variant text-sm">
@@ -32,7 +32,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-5 shrink-0">
           <RevenueCard
             amount="$2,485.50"
             miniBarHeights={revenueMiniBarHeights}
@@ -44,7 +44,7 @@ export default function DashboardPage() {
             value={14}
             icon={Receipt}
             footer={
-              <div className="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between text-sm">
+              <div className="mt-3 pt-3 border-t border-outline-variant/20 flex justify-between text-sm">
                 <span className="text-on-surface-variant">Completed: 86</span>
                 <span className="text-primary font-medium">Avg Time: 4m</span>
               </div>
@@ -58,13 +58,13 @@ export default function DashboardPage() {
             icon={Armchair}
             footer={
               <>
-                <div className="mt-4 w-full bg-surface-container-highest rounded-full h-2 overflow-hidden">
+                <div className="mt-3 w-full bg-surface-container-highest rounded-full h-2 overflow-hidden">
                   <div
                     className="bg-primary h-full rounded-full"
                     style={{ width: "85%" }}
                   />
                 </div>
-                <div className="mt-2 text-xs text-on-surface-variant text-right">
+                <div className="mt-1.5 text-xs text-on-surface-variant text-right">
                   4 tables available
                 </div>
               </>
@@ -73,7 +73,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Secondary Section */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1 min-h-0">
           <BarChart
             title="Revenue Trend"
             subtitle="Last 7 days vs Previous week"
@@ -81,7 +81,7 @@ export default function DashboardPage() {
           />
 
           {/* Right Column */}
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5 min-h-0">
             <TopSellers items={topSellers} />
             <QrCta />
           </div>

@@ -15,8 +15,8 @@ export function BarChart({
   yLabels = ["$1k", "$750", "$500", "$250", "$0"],
 }: BarChartProps) {
   return (
-    <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-8 flex flex-col">
-      <div className="flex justify-between items-center mb-8">
+    <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-6 flex flex-col min-h-0">
+      <div className="flex justify-between items-center mb-4 shrink-0">
         <div>
           <h3 className="text-lg font-headline font-bold text-on-surface">
             {title}
@@ -27,7 +27,7 @@ export function BarChart({
           <MoreHorizontal size={20} />
         </button>
       </div>
-      <div className="flex-1 relative min-h-[250px] flex items-end gap-4 pb-6 border-b border-outline-variant/20">
+      <div className="flex-1 relative min-h-0 flex items-end gap-4 pb-6 border-b border-outline-variant/20">
         <div className="absolute left-0 top-0 bottom-6 flex flex-col justify-between text-xs text-on-surface-variant pr-4">
           {yLabels.map((label) => (
             <span key={label}>{label}</span>

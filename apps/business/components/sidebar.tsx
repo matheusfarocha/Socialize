@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard,
   BarChart3,
@@ -11,7 +12,6 @@ import {
   Users,
   Package,
   Settings,
-  Plus,
   LogOut,
 } from "lucide-react";
 
@@ -28,12 +28,27 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [venueName, setVenueName] = useState("Loading...");
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setVenueName("My Venue"); return; }
+      const { data: venue } = await supabase
+        .from("venues")
+        .select("name")
+        .eq("owner_id", user.id)
+        .single();
+      setVenueName(venue?.name ?? "My Venue");
+    }
+    load();
+  }, []);
 
   return (
     <nav className="fixed left-0 top-0 h-screen flex flex-col p-6 w-64 bg-surface z-50">
       <div className="mb-10 pl-2">
         <h1 className="text-xl font-bold text-on-surface tracking-tighter font-headline">
-          The Modern Hearth
+          {venueName}
         </h1>
         <p className="text-xs text-on-surface-variant mt-1">Downtown Branch</p>
       </div>
@@ -61,13 +76,6 @@ export function Sidebar() {
             </Link>
           );
         })}
-      </div>
-
-      <div className="mt-auto mb-6">
-        <button className="w-full bg-gradient-to-r from-primary to-primary-container text-white rounded-xl py-3 px-4 font-headline font-semibold text-sm transition-transform shadow-sm flex justify-center items-center gap-2 hover:opacity-90">
-          <Plus size={18} />
-          New Order
-        </button>
       </div>
 
       <div className="border-t border-outline-variant/20 pt-4 relative">

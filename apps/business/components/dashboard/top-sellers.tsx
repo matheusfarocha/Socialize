@@ -6,7 +6,7 @@ interface TopSellersProps {
 
 export function TopSellers({ items }: TopSellersProps) {
   return (
-    <div className="bg-surface-container-low rounded-xl p-6 flex-1">
+    <div className="bg-surface-container-low rounded-xl p-6 flex-1 min-h-0 overflow-hidden">
       <h3 className="text-lg font-headline font-bold text-on-surface mb-4">
         Top Sellers
       </h3>
