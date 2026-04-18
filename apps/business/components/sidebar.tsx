@@ -1,0 +1,86 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  BarChart3,
+  Armchair,
+  UtensilsCrossed,
+  Users,
+  Package,
+  Settings,
+  Plus,
+} from "lucide-react";
+
+const navItems = [
+  { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Insights", href: "/insights", icon: BarChart3 },
+  { label: "Floor Plan", href: "/floor-plan", icon: Armchair },
+  { label: "Menu", href: "/menu", icon: UtensilsCrossed },
+  { label: "Staff", href: "/staff", icon: Users },
+  { label: "Inventory", href: "/inventory", icon: Package },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="fixed left-0 top-0 h-screen flex flex-col p-6 w-64 bg-surface z-50">
+      <div className="mb-10 pl-2">
+        <h1 className="text-xl font-bold text-on-surface tracking-tighter font-headline">
+          The Modern Hearth
+        </h1>
+        <p className="text-xs text-on-surface-variant mt-1">Downtown Branch</p>
+      </div>
+
+      <div className="flex-1 space-y-1">
+        {navItems.map((item) => {
+          const isActive =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(item.href);
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium tracking-wide transition-colors duration-200 font-headline ${
+                isActive
+                  ? "bg-surface-container-low text-primary font-bold border-r-4 border-primary"
+                  : "text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low"
+              }`}
+            >
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="mt-auto mb-6">
+        <button className="w-full bg-gradient-to-r from-primary to-primary-container text-white rounded-xl py-3 px-4 font-headline font-semibold text-sm transition-transform shadow-sm flex justify-center items-center gap-2 hover:opacity-90">
+          <Plus size={18} />
+          New Order
+        </button>
+      </div>
+
+      <div className="border-t border-outline-variant/20 pt-4">
+        <Link
+          href="/settings"
+          className="flex items-center gap-3 px-4 py-2 rounded-xl text-on-surface/60 hover:text-on-surface hover:bg-surface-container-low transition-colors duration-200 font-headline font-medium text-sm tracking-wide"
+        >
+          <Settings size={20} />
+          Settings
+        </Link>
+      </div>
+
+      <div className="mt-4 flex items-center gap-3 px-4 py-2">
+        <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-headline font-bold text-sm">
+          MP
+        </div>
+      </div>
+    </nav>
+  );
+}

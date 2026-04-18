@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Recommendations - The Modern Hearth</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-container": "#795950",
+                        "on-primary-fixed": "#2b1700",
+                        "surface-container": "#f1ede7",
+                        "primary-container": "#e09a3e",
+                        "primary": "#865300",
+                        "secondary": "#77574d",
+                        "on-surface-variant": "#514437",
+                        "on-secondary-fixed-variant": "#5d4037",
+                        "on-primary-container": "#593500",
+                        "inverse-surface": "#31302d",
+                        "outline-variant": "#d6c3b1",
+                        "outline": "#847465",
+                        "surface": "#fdf9f3",
+                        "error-container": "#ffdad6",
+                        "surface-tint": "#865300",
+                        "secondary-container": "#fed3c7",
+                        "primary-fixed": "#ffddb9",
+                        "on-tertiary": "#ffffff",
+                        "tertiary": "#00658e",
+                        "surface-dim": "#dddad4",
+                        "inverse-primary": "#ffb961",
+                        "tertiary-container": "#59b1e4",
+                        "secondary-fixed": "#ffdbd0",
+                        "primary-fixed-dim": "#ffb961",
+                        "surface-container-low": "#f7f3ed",
+                        "on-tertiary-fixed": "#001e2e",
+                        "on-error": "#ffffff",
+                        "surface-container-high": "#ebe8e2",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#c6e7ff",
+                        "inverse-on-surface": "#f4f0ea",
+                        "surface-bright": "#fdf9f3",
+                        "on-background": "#1c1c18",
+                        "surface-container-highest": "#e6e2dc",
+                        "on-surface": "#1c1c18",
+                        "background": "#fdf9f3",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed": "#2c160e",
+                        "on-primary-fixed-variant": "#663e00",
+                        "error": "#ba1a1a",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed-dim": "#83cfff",
+                        "secondary-fixed-dim": "#e7bdb1",
+                        "on-tertiary-container": "#00425e",
+                        "surface-variant": "#e6e2dc",
+                        "on-tertiary-fixed-variant": "#004c6c",
+                        "surface-container-lowest": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Plus Jakarta Sans"],
+                        "body": ["Be Vietnam Pro"],
+                        "label": ["Be Vietnam Pro"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #fdf9f3; color: #1c1c18; }
+        h1, h2, h3, h4, h5, h6, .font-headline { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased flex min-h-screen">
+<!-- SideNavBar Component -->
+<nav class="fixed left-0 top-0 h-screen flex flex-col p-6 w-64 border-r-0 bg-[#FDF9F3] dark:bg-[#1C1C18] shadow-sm z-50">
+<div class="mb-10 pl-2">
+<span class="text-xl font-bold text-[#1C1C18] dark:text-[#FDF9F3] tracking-tighter" style="">The Modern Hearth</span>
+<p class="text-xs text-on-surface-variant mt-1 font-body" style="">Downtown Branch</p>
+</div>
+<ul class="flex flex-col gap-2 flex-grow font-['Plus_Jakarta_Sans'] font-medium text-sm tracking-wide">
+<li class="" style="">
+<a class="flex items-center gap-3 px-4 py-3 rounded-full text-[#1C1C18]/60 dark:text-[#FDF9F3]/60 hover:text-[#1C1C18] dark:hover:text-[#FDF9F3] hover:bg-[#F7F3ED] dark:hover:bg-[#252420] transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="dashboard" style="">dashboard</span>
+                    Dashboard
+                </a>
+</li>
+<li class="" style="">
+<a class="flex items-center gap-3 px-4 py-3 rounded-full text-[#865300] dark:text-[#E09A3E] font-bold bg-[#F7F3ED] dark:bg-[#252420] border-r-4 border-[#865300] dark:border-[#E09A3E]" href="#" style="">
+<span class="material-symbols-outlined" data-icon="analytics" style='font-variation-settings: "FILL" 1;'>analytics</span>Insights</a>
+</li>
+<li class="" style="">
+<a class="flex items-center gap-3 px-4 py-3 rounded-full text-[#1C1C18]/60 dark:text-[#FDF9F3]/60 hover:text-[#1C1C18] dark:hover:text-[#FDF9F3] hover:bg-[#F7F3ED] dark:hover:bg-[#252420] transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="floor_lamp" style="">floor_lamp</span>
+                    Floor Plan
+                </a>
+</li>
+<li class="" style="">
+<a class="flex items-center gap-3 px-4 py-3 rounded-full text-[#1C1C18]/60 dark:text-[#FDF9F3]/60 hover:text-[#1C1C18] dark:hover:text-[#FDF9F3] hover:bg-[#F7F3ED] dark:hover:bg-[#252420] transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="restaurant_menu" style="">restaurant_menu</span>
+                    Menu
+                </a>
+</li>
+<li class="" style="">
+<a class="flex items-center gap-3 px-4 py-3 rounded-full text-[#1C1C18]/60 dark:text-[#FDF9F3]/60 hover:text-[#1C1C18] dark:hover:text-[#FDF9F3] hover:bg-[#F7F3ED] dark:hover:bg-[#252420] transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="badge" style="">badge</span>
+                    Staff
+                </a>
+</li>
+<li class="" style="">
+<a class="flex items-center gap-3 px-4 py-3 rounded-full text-[#1C1C18]/60 dark:text-[#FDF9F3]/60 hover:text-[#1C1C18] dark:hover:text-[#FDF9F3] hover:bg-[#F7F3ED] dark:hover:bg-[#252420] transition-colors duration-200" href="#" style="">
+<span class="material-symbols-outlined" data-icon="inventory_2" style="">inventory_2</span>
+                    Inventory
+                </a>
+</li>
+</ul>
+<div class="mt-auto flex flex-col gap-4">
+<div class="flex items-center gap-3 mt-4 px-2">
+<div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-headline font-bold text-lg" style="">
+                    MP
+                </div>
+<div class="flex flex-col">
+<span class="font-headline font-semibold text-sm" style="">Manager Profile</span>
+<a class="text-xs text-on-surface-variant flex items-center gap-1 hover:text-primary transition-colors" href="#" style="">
+<span class="material-symbols-outlined text-[14px]" style="">settings</span> Settings
+                    </a>
+</div>
+</div>
+</div>
+</nav>
+<!-- TopAppBar Component -->
+<header class="fixed top-0 right-0 left-64 flex justify-between items-center px-8 py-4 z-40 bg-[#FDF9F3]/70 dark:bg-[#1C1C18]/70 backdrop-blur-xl transition-all duration-300 ease-in-out">
+<div class="flex items-center gap-4 hidden">
+<span class="font-headline font-bold text-xl tracking-tight text-primary" style="">Hearth Manager</span>
+</div>
+<div class="flex items-center gap-6 w-full justify-end">
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-[#1C1C18]/70 hover:bg-[#F7F3ED] transition-colors duration-200" style="">
+<span class="material-symbols-outlined" data-icon="notifications" style="">notifications</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-[#1C1C18]/70 hover:bg-[#F7F3ED] transition-colors duration-200" style="">
+<span class="material-symbols-outlined" data-icon="dark_mode" style="">dark_mode</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="flex-1 md:ml-64 pt-6 md:pt-24 pb-24 px-4 md:px-12 max-w-7xl mx-auto w-full">
+<!-- Conversational Header -->
+<div class="mb-12 max-w-3xl">
+<h1 class="font-headline text-4xl md:text-5xl font-extrabold text-on-background tracking-tight mb-4 leading-tight" style="">Here's what we've brewed up for you today.</h1>
+<p class="text-xl text-on-surface-variant leading-relaxed" style="">Based on recent patterns, we've spotted some interesting trends that might help you run things a bit smoother.</p>
+</div>
+<!-- Feed Layout -->
+<div class="space-y-10">
+<!-- Insight 1: Large Imagery Focus -->
+<article class="bg-surface-container-low rounded-[2rem] p-6 md:p-10 flex flex-col gap-8 items-center group hover:bg-surface-container-high transition-colors duration-300">
+<div class="flex-1 space-y-4 max-w-3xl">
+<div class="inline-flex items-center gap-2 px-3 py-1 bg-primary-container/20 text-primary-container rounded-full text-sm font-semibold tracking-wide" style="">
+<span class="material-symbols-outlined text-sm" style="">trending_up</span>
+                        Thursday Afternoons
+                    </div>
+<h2 class="font-headline text-3xl font-bold text-on-background tracking-tight" style="">The 3 PM Rush is getting stronger.</h2>
+<p class="text-lg text-on-surface-variant leading-relaxed" style="">We noticed a 25% uptick in espresso-based drinks between 3 PM and 5 PM over the last three Thursdays. It looks like the local office crowd is making us their go-to spot for an afternoon pick-me-up.</p>
+<button class="mt-4 bg-surface-container-highest text-on-surface px-6 py-3 rounded-full font-medium hover:bg-primary-fixed hover:text-on-primary-fixed transition-colors" style="">
+                        Review Staffing for Thursdays
+                    </button>
+</div>
+</article>
+<!-- Insight 2: Abstract/Icon Focus -->
+<article class="bg-surface-container-low rounded-[2rem] p-6 md:p-10 flex flex-col gap-8 items-center group hover:bg-surface-container-high transition-colors duration-300">
+<div class="flex-1 space-y-4 max-w-3xl">
+<div class="inline-flex items-center gap-2 px-3 py-1 bg-tertiary-container/20 text-tertiary rounded-full text-sm font-semibold tracking-wide" style="">
+<span class="material-symbols-outlined text-sm" style="">groups</span>
+                        Customer Persona
+                    </div>
+<h2 class="font-headline text-3xl font-bold text-on-background tracking-tight" style="">The "Writers" are settling in.</h2>
+<p class="text-lg text-on-surface-variant leading-relaxed" style="">Table turnover in the back nook has slowed significantly in the mornings. Wi-Fi usage indicates lots of long-session laptop users. They love the quiet vibe, but they're mostly ordering single drips.</p>
+<button class="mt-4 bg-surface-container-highest text-on-surface px-6 py-3 rounded-full font-medium hover:bg-tertiary-fixed hover:text-on-tertiary-fixed transition-colors" style="">
+                        Consider a "Bottomless Mug" promo
+                    </button>
+</div>
+</article>
+<!-- Insight 3: Bento style mixed data -->
+<article class="bg-surface-container-low rounded-[2rem] p-6 md:p-10 group hover:bg-surface-container-high transition-colors duration-300">
+<div class="flex flex-col md:flex-row gap-8">
+<div class="flex-1 space-y-4">
+<div class="inline-flex items-center gap-2 px-3 py-1 bg-secondary-container/50 text-secondary rounded-full text-sm font-semibold tracking-wide" style="">
+<span class="material-symbols-outlined text-sm" style="">inventory_2</span>
+                            Inventory Check
+                        </div>
+<h2 class="font-headline text-3xl font-bold text-on-background tracking-tight" style="">Oat milk is outpacing Almond.</h2>
+<p class="text-lg text-on-surface-variant leading-relaxed" style="">It finally happened. For the first time this quarter, Oat milk requests have surpassed Almond milk by a wide margin. We might run low before the weekend delivery.</p>
+<button class="mt-4 bg-secondary text-on-secondary px-6 py-3 rounded-full font-medium hover:bg-secondary-fixed hover:text-on-secondary-fixed transition-colors" style="">
+                            Adjust Next Order
+                        </button>
+</div>
+<div class="w-full md:w-5/12 grid grid-cols-2 gap-4">
+<div class="bg-surface-container-highest rounded-2xl p-6 flex flex-col justify-center items-center text-center">
+<span class="material-symbols-outlined text-secondary text-4xl mb-2" style='font-variation-settings: "FILL" 1;'>water_drop</span>
+<span class="text-2xl font-bold text-on-surface mb-1" style="">68%</span>
+<span class="text-sm text-on-surface-variant" style="">Oat Preference</span>
+</div>
+<div class="bg-surface-container-highest rounded-2xl p-6 flex flex-col justify-center items-center text-center opacity-70">
+<span class="material-symbols-outlined text-on-surface-variant text-4xl mb-2" style='font-variation-settings: "FILL" 1;'>eco</span>
+<span class="text-2xl font-bold text-on-surface-variant mb-1" style="">32%</span>
+<span class="text-sm text-on-surface-variant" style="">Almond Preference</span>
+</div>
+</div>
+</div>
+</article>
+</div>
+</main>
+</body></html>
