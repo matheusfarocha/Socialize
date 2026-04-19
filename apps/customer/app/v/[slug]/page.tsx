@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
+import Link from "next/link";
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { notFound, useParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { notFound, useParams, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -16,7 +16,9 @@ import {
   Minus,
   Plus,
   ShoppingBag,
+  Users,
 } from "lucide-react";
+import { PresenceProfileModal } from "@/components/social/presence-profile-modal";
 import {
   appendOrder,
   clearCart,
@@ -28,6 +30,14 @@ import {
   type StoredOrder,
   writeCart,
 } from "@/lib/order-storage";
+import {
+  buildPresenceTableId,
+  findTableSummary,
+  type TableSummary,
+  type VenueSummary,
+} from "@/lib/presence";
+import { createPublicSupabaseClient } from "@/lib/supabase";
+import { useVenuePresence } from "@/lib/use-venue-presence";
 
 interface FloorPoint {
   x: number;
@@ -36,6 +46,7 @@ interface FloorPoint {
 
 interface PlacedElement {
   id: string;
+  renderKey: string;
   kind: "table" | "structural";
   type: string;
   x: number;
@@ -65,6 +76,7 @@ interface ZoneData {
 }
 
 interface VenueData {
+  id: string;
   slug: string;
   name: string;
   branchName: string;
@@ -83,17 +95,7 @@ interface CheckoutState {
   cardLastFour: string;
 }
 
-const publicSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  },
-);
+const publicSupabase = createPublicSupabaseClient();
 
 const defaultOutline = [
   { x: 0, y: 0 },
@@ -143,7 +145,9 @@ function createOrderId() {
 
 export default function VenuePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const requestedTable = searchParams.get("table");
 
   const [venue, setVenue] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,6 +164,54 @@ export default function VenuePage() {
     () => readCart(cartStorageSlug),
     () => emptyCart,
   );
+
+  const presenceVenue: VenueSummary | null = useMemo(
+    () =>
+      venue
+        ? {
+            id: venue.id,
+            slug: venue.slug,
+            name: venue.name,
+            branchName: venue.branchName,
+          }
+        : null,
+    [venue],
+  );
+
+  const presenceTables: TableSummary[] = useMemo(
+    () =>
+      (venue?.zones ?? []).flatMap((zone) =>
+        zone.elements
+          .filter((element) => element.kind === "table")
+          .map((table) => ({
+            id: table.id,
+            label: table.label ?? table.id,
+            seats: table.seats ?? 0,
+            zoneId: zone.id,
+            zoneName: zone.name,
+          })),
+      ),
+    [venue],
+  );
+
+  const {
+    profile,
+    profileReady,
+    draft,
+    editorOpen,
+    setEditorOpen,
+    updateDraft,
+    saveProfile,
+    saveError,
+    syncing,
+    presenceStatus,
+    presenceVisible,
+    presenceAvailable,
+    setProfileTable,
+  } = useVenuePresence({
+    venue: presenceVenue,
+    defaultTableId: requestedTable,
+  });
 
   useEffect(() => {
     async function load() {
@@ -199,16 +251,24 @@ export default function VenuePage() {
           floorHeight: zr.floor_height ?? 600,
           outline: (zr.floor_outline as FloorPoint[]) ?? defaultOutline,
           elements: [
-            ...(tables ?? []).map((table) => ({
-              id: table.identifier,
+            ...(tables ?? []).map((table, index) => ({
+              id: buildPresenceTableId({
+                zoneId: zr.id,
+                identifier: table.identifier,
+                x: table.pos_x,
+                y: table.pos_y,
+              }),
+              renderKey: `table:${zr.id}:${table.identifier}:${table.pos_x ?? "na"}:${table.pos_y ?? "na"}:${index}`,
               kind: "table" as const,
               type: table.shape,
               x: table.pos_x,
               y: table.pos_y,
               rotation: table.rotation,
               seats: table.seat_count,
+              label: table.identifier,
             })),
             ...(structural ?? []).map((element, index) => ({
+              renderKey: `structural:${zr.id}:${element.element_type}:${element.pos_x ?? "na"}:${element.pos_y ?? "na"}:${index}`,
               id:
                 element.element_type === "bar"
                   ? `BAR-${String(index + 1).padStart(2, "0")}`
@@ -258,6 +318,7 @@ export default function VenuePage() {
       }
 
       setVenue({
+        id: venueRow.id,
         slug: venueRow.slug,
         name: venueRow.name,
         branchName: venueRow.branch_name ?? "Main Floor",
@@ -273,18 +334,39 @@ export default function VenuePage() {
     load().catch(() => setLoading(false));
   }, [slug]);
 
+  useEffect(() => {
+    if (!venue || !requestedTable) return;
+
+    const matchedTable = venue.zones
+      .flatMap((zone) =>
+        zone.elements
+          .filter((element) => element.kind === "table")
+          .map((element) => ({ zone, element })),
+      )
+      .find(({ element }) => element.id === requestedTable || element.label === requestedTable);
+
+    const nextZoneIndex = matchedTable
+      ? venue.zones.findIndex((zone) => zone.id === matchedTable.zone.id)
+      : -1;
+
+    if (nextZoneIndex >= 0) {
+      startTransition(() => {
+        setActiveZoneIndex(nextZoneIndex);
+        setSelectedTable(matchedTable?.element.id ?? requestedTable);
+      });
+    }
+  }, [requestedTable, venue]);
+
   const activeZone = venue?.zones[activeZoneIndex] ?? null;
 
-  const tableOptions = useMemo(
-    () =>
-      (venue?.zones ?? [])
-        .flatMap((zone) => zone.elements)
-        .filter((element) => element.kind === "table")
-        .map((table) => ({
-          id: table.id,
-          seats: table.seats ?? 0,
-        })),
-    [venue],
+  const tableOptions = presenceTables;
+  const selectedTableMeta = useMemo(
+    () => findTableSummary(tableOptions, selectedTable),
+    [selectedTable, tableOptions],
+  );
+  const profileTableMeta = useMemo(
+    () => findTableSummary(tableOptions, profile?.tableId ?? null),
+    [profile?.tableId, tableOptions],
   );
 
   const subtotal = useMemo(
@@ -383,10 +465,11 @@ export default function VenuePage() {
       customerEmail: trimmedEmail,
       notes: trimmedNotes,
       fulfillmentType: checkout.fulfillmentType,
-      selectedTableId: checkout.fulfillmentType === "dine_in" ? selectedTable : null,
+      selectedTableId:
+        checkout.fulfillmentType === "dine_in" ? selectedTableMeta?.label ?? selectedTable : null,
       paymentMethod: checkout.paymentMethod,
       cardLabel:
-        checkout.paymentMethod === "card" ? `${trimmedCardholderName} •••• ${trimmedCardLastFour}` : null,
+        checkout.paymentMethod === "card" ? `${trimmedCardholderName} **** ${trimmedCardLastFour}` : null,
       subtotal,
       serviceFee,
       total,
@@ -436,6 +519,87 @@ export default function VenuePage() {
         </div>
       </header>
 
+      <section className="px-4 pt-4">
+        <div className="rounded-[1.75rem] bg-surface-container-low p-4 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
+                People At The Cafe
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-on-surface">
+                {presenceVisible && profile
+                  ? `You're visible as ${profile.initials}`
+                  : profileReady && profile
+                    ? presenceAvailable
+                      ? `Syncing ${profile.initials} into the live roster`
+                      : "Your profile is ready, but live presence is offline"
+                    : "Create a public cafe profile to join the live roster"}
+              </h2>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                {presenceVisible && profile
+                  ? `${profile.occupation} - ${profile.interests}${profileTableMeta ? ` - Table ${profileTableMeta.label}` : ""}`
+                  : profileReady && profile
+                    ? presenceAvailable
+                      ? "Your profile is saved on this device. We are finishing the live presence sync now."
+                      : "Your profile is saved on this device, but the live presence backend is unavailable right now."
+                    : "Only initials, occupation, interests, and your current table are shown to other guests."}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <span className="inline-flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-semibold text-on-surface">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    !presenceAvailable
+                      ? "bg-rose-500"
+                      : presenceVisible && presenceStatus === "active"
+                        ? "bg-green-500"
+                        : presenceVisible
+                          ? "bg-amber-500"
+                          : "bg-slate-400"
+                  }`}
+                />
+                {!presenceAvailable
+                  ? "Offline"
+                  : presenceVisible
+                    ? presenceStatus === "active"
+                      ? "Active"
+                      : "Idle"
+                    : "Not visible"}
+              </span>
+
+              <Link
+                href={`/people?venue=${encodeURIComponent(venue.slug)}`}
+                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
+              >
+                <Users size={16} />
+                Open people view
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setEditorOpen(true)}
+                className="rounded-full bg-surface px-5 py-3 text-sm font-semibold text-on-surface"
+              >
+                {presenceVisible ? "Edit profile" : profileReady ? "Retry visibility" : "Go visible"}
+              </button>
+
+              {selectedTable && profileReady && profile?.tableId !== selectedTable ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void setProfileTable(selectedTable);
+                  }}
+                  className="rounded-full bg-secondary-container px-5 py-3 text-sm font-semibold text-on-secondary-container"
+                >
+                  Use table {selectedTableMeta?.label ?? selectedTable}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {venue.zones.length > 1 && (
         <div className="px-4 pt-3 pb-1 flex items-center gap-2">
           <Layers size={14} className="text-on-surface-variant" />
@@ -462,6 +626,7 @@ export default function VenuePage() {
           floorWidth={activeZone.floorWidth}
           floorHeight={activeZone.floorHeight}
           selectedTable={selectedTable}
+          selectedTableLabel={selectedTableMeta?.label ?? null}
           onSelectTable={setSelectedTable}
         />
       )}
@@ -680,7 +845,7 @@ export default function VenuePage() {
                         </option>
                         {tableOptions.map((table) => (
                           <option key={table.id} value={table.id}>
-                            {table.id}{table.seats ? ` · ${table.seats} seats` : ""}
+                            {table.label}{table.seats ? ` - ${table.seats} seats` : ""}
                           </option>
                         ))}
                       </select>
@@ -876,6 +1041,20 @@ export default function VenuePage() {
           ) : null}
         </div>
       </section>
+
+      <PresenceProfileModal
+        open={editorOpen}
+        venueName={venue.name}
+        draft={draft}
+        tables={presenceTables}
+        saving={syncing}
+        error={saveError}
+        onClose={() => setEditorOpen(false)}
+        onChange={updateDraft}
+        onSave={() => {
+          void saveProfile();
+        }}
+      />
     </div>
   );
 }
@@ -889,6 +1068,7 @@ function ReadOnlyCanvas({
   floorWidth,
   floorHeight,
   selectedTable,
+  selectedTableLabel,
   onSelectTable,
 }: {
   outline: FloorPoint[];
@@ -896,6 +1076,7 @@ function ReadOnlyCanvas({
   floorWidth: number;
   floorHeight: number;
   selectedTable: string | null;
+  selectedTableLabel: string | null;
   onSelectTable: (id: string | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -903,8 +1084,14 @@ function ReadOnlyCanvas({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
-  zoomRef.current = zoom;
-  panRef.current = pan;
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
 
   const fitToView = useCallback(() => {
     if (!containerRef.current) return;
@@ -988,7 +1175,7 @@ function ReadOnlyCanvas({
           <p className="text-xs text-on-surface-variant">Tap a table for dine-in.</p>
         </div>
         <span className="rounded-full bg-secondary-container px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
-          {selectedTable ? `Table ${selectedTable}` : "Pickup ready"}
+          {selectedTable ? `Table ${selectedTableLabel ?? selectedTable}` : "Pickup ready"}
         </span>
       </div>
       <div
@@ -1047,7 +1234,7 @@ function ReadOnlyCanvas({
 
             {elements.map((el) => (
               <FloorElement
-                key={el.id}
+                key={el.renderKey}
                 element={el}
                 selected={selectedTable === el.id}
                 onTap={() => onSelectTable(selectedTable === el.id ? null : el.id)}
@@ -1123,7 +1310,7 @@ function FloorElement({
     position: "absolute",
   };
 
-  const ring = selected ? "ring-2 ring-primary" : "";
+  const ring = selected ? "ring-4 ring-primary/20 border-primary animate-pulse" : "";
 
   switch (element.type) {
     case "round":
@@ -1134,7 +1321,7 @@ function FloorElement({
           onClick={onTap}
         >
           <div className="w-8 h-8 rounded-full bg-surface-container-highest" />
-          {selected && <TableLabel id={element.id} seats={element.seats} />}
+          {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "square":
@@ -1145,7 +1332,7 @@ function FloorElement({
           onClick={onTap}
         >
           <div className="w-8 h-6 rounded bg-surface-container-highest" />
-          {selected && <TableLabel id={element.id} seats={element.seats} />}
+          {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "long":
@@ -1156,7 +1343,7 @@ function FloorElement({
           onClick={onTap}
         >
           <div className="w-16 h-8 bg-surface-container-highest rounded-sm" />
-          {selected && <TableLabel id={element.id} seats={element.seats} />}
+          {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "booth":
@@ -1167,7 +1354,7 @@ function FloorElement({
           onClick={onTap}
         >
           <div className="w-8 h-8 rounded-[6px] rounded-tl-[16px] bg-surface-container-highest" />
-          {selected && <TableLabel id={element.id} seats={element.seats} />}
+          {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "bar": {
@@ -1207,10 +1394,12 @@ function FloorElement({
   }
 }
 
-function TableLabel({ id, seats }: { id: string; seats?: number }) {
+function TableLabel({ label, seats }: { label: string; seats?: number }) {
   return (
     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface px-2 py-1 rounded-md text-[10px] font-bold whitespace-nowrap z-10">
-      {id}{seats ? ` · ${seats} seats` : ""}
+      {label}{seats ? ` - ${seats} seats` : ""}
     </div>
   );
 }
+
+
