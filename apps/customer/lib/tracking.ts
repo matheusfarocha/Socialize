@@ -1,4 +1,11 @@
-import { supabase } from "./supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createPublicSupabaseClient } from "./supabase";
+
+let _client: SupabaseClient | null = null;
+function supabase(): SupabaseClient {
+  if (!_client) _client = createPublicSupabaseClient();
+  return _client;
+}
 
 const SCAN_FLAG_PREFIX = "socialize:scan-logged:";
 const SESSION_ID_KEY = "socialize:session-id";
@@ -26,7 +33,7 @@ export async function logScan(venueId: string, tableIdentifier?: string) {
   if (window.sessionStorage.getItem(flagKey)) return;
 
   const sessionId = getSessionId();
-  const { error } = await supabase.from("qr_scans").insert({
+  const { error } = await supabase().from("qr_scans").insert({
     venue_id: venueId,
     session_id: sessionId,
     table_identifier: tableIdentifier ?? null,
@@ -39,7 +46,7 @@ export async function logScan(venueId: string, tableIdentifier?: string) {
 
 export async function startSession(venueId: string, tableIdentifier: string | null): Promise<string | null> {
   const sessionId = getSessionId();
-  const { data, error } = await supabase
+  const { data, error } = await supabase()
     .from("customer_sessions")
     .insert({
       venue_id: venueId,

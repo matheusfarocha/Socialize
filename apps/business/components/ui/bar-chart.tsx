@@ -36,8 +36,8 @@ export function BarChart({
       </div>
       <div className="flex-1 relative min-h-0 flex items-end gap-4 pb-6 border-b border-outline-variant/20">
         <div className="absolute left-0 top-0 bottom-6 flex flex-col justify-between text-xs text-on-surface-variant pr-4">
-          {yLabels.map((label) => (
-            <span key={label}>{label}</span>
+          {yLabels.map((label, i) => (
+            <span key={i}>{label}</span>
           ))}
         </div>
         <div className="w-full flex items-end pl-12 h-full gap-2 justify-around">
