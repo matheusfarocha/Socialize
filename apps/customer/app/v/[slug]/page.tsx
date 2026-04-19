@@ -25,7 +25,14 @@ import {
 import { PresenceProfileModal } from "@/components/social/presence-profile-modal";
 import {
   buildPresenceTableId,
+  countTableOccupancy,
   findTableSummary,
+  getPresenceErrorMessage,
+  isPresenceBackendMissing,
+  isPresenceFresh,
+  normalizeActiveUsers,
+  sortActiveUsers,
+  type ActiveUserRecord,
   type TableSummary,
   type VenueSummary,
 } from "@/lib/presence";
@@ -86,6 +93,36 @@ function outlineToPath(points: FloorPoint[]): string {
   return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z";
 }
 
+function mapActiveUsers(rows: Array<{
+  id: string;
+  venue_id: string;
+  user_id: string;
+  session_id: string;
+  initials: string;
+  occupation: string;
+  interests: string;
+  table_id: string | null;
+  last_seen: string;
+  status: "active" | "idle";
+}>): ActiveUserRecord[] {
+  return sortActiveUsers(
+    rows
+      .map((row) => ({
+        id: row.id,
+        venueId: row.venue_id,
+        userId: row.user_id,
+        sessionId: row.session_id,
+        initials: row.initials,
+        occupation: row.occupation,
+        interests: row.interests,
+        tableId: row.table_id,
+        lastSeen: row.last_seen,
+        status: row.status,
+      }))
+      .filter((user) => isPresenceFresh(user.lastSeen)),
+  );
+}
+
 /* ─── Page ───────────────────────────────────────────── */
 
 export default function VenueFloorPage() {
@@ -98,6 +135,10 @@ export default function VenueFloorPage() {
   const [loading, setLoading] = useState(true);
   const [activeZoneIndex, setActiveZoneIndex] = useState(0);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [activeUsers, setActiveUsers] = useState<ActiveUserRecord[]>([]);
+  const [tablePresenceAvailable, setTablePresenceAvailable] = useState(true);
+  const [tablePresenceError, setTablePresenceError] = useState("");
+  const refreshTimerRef = useRef<number | null>(null);
 
   /* Presence */
   const presenceVenue: VenueSummary | null = useMemo(
@@ -139,6 +180,12 @@ export default function VenueFloorPage() {
   /* Load venue */
   useEffect(() => {
     async function load() {
+      setLoading(true);
+      setVenue(null);
+      setActiveUsers([]);
+      setTablePresenceAvailable(true);
+      setTablePresenceError("");
+
       const { data: venueRow } = await publicSupabase
         .from("venues")
         .select("id, slug, name, branch_name")
@@ -202,6 +249,95 @@ export default function VenueFloorPage() {
     load().catch(() => setLoading(false));
   }, [slug]);
 
+  useEffect(() => {
+    if (!venue) return;
+
+    let cancelled = false;
+    const venueId = venue.id;
+
+    async function refreshActiveUsers() {
+      const { data, error } = await publicSupabase
+        .from("active_users")
+        .select("id, venue_id, user_id, session_id, initials, occupation, interests, table_id, last_seen, status")
+        .eq("venue_id", venueId);
+
+      if (cancelled) return;
+
+      if (error) {
+        setActiveUsers([]);
+        setTablePresenceAvailable(!isPresenceBackendMissing(error.message));
+        setTablePresenceError(getPresenceErrorMessage(error.message));
+        return;
+      }
+
+      setActiveUsers(mapActiveUsers(data ?? []));
+      setTablePresenceAvailable(true);
+      setTablePresenceError("");
+    }
+
+    refreshActiveUsers().catch(() => {
+      if (cancelled) return;
+      setActiveUsers([]);
+      setTablePresenceError("Live table occupancy is unavailable right now.");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [venue]);
+
+  useEffect(() => {
+    if (!venue || !tablePresenceAvailable) return;
+    const venueId = venue.id;
+
+    const channel = publicSupabase
+      .channel(`venue-floor:active_users:${venueId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "active_users",
+          filter: `venue_id=eq.${venueId}`,
+        },
+        async () => {
+          if (refreshTimerRef.current) {
+            window.clearTimeout(refreshTimerRef.current);
+          }
+
+          refreshTimerRef.current = window.setTimeout(async () => {
+            const { data, error } = await publicSupabase
+              .from("active_users")
+              .select("id, venue_id, user_id, session_id, initials, occupation, interests, table_id, last_seen, status")
+              .eq("venue_id", venueId);
+
+            if (error) {
+              setTablePresenceAvailable(!isPresenceBackendMissing(error.message));
+              setTablePresenceError(getPresenceErrorMessage(error.message));
+              return;
+            }
+
+            setActiveUsers(mapActiveUsers(data ?? []));
+            setTablePresenceAvailable(true);
+            setTablePresenceError("");
+          }, 250);
+        },
+      );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        setTablePresenceError("Realtime table updates are unavailable right now.");
+      }
+    });
+
+    return () => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+      void publicSupabase.removeChannel(channel);
+    };
+  }, [tablePresenceAvailable, venue]);
+
   /* Sync requested table */
   useEffect(() => {
     if (!venue || !requestedTable) return;
@@ -220,25 +356,29 @@ export default function VenueFloorPage() {
   const activeZone = venue?.zones[activeZoneIndex] ?? null;
   const selectedTableMeta = useMemo(() => findTableSummary(presenceTables, selectedTable), [selectedTable, presenceTables]);
   const profileTableMeta = useMemo(() => findTableSummary(presenceTables, profile?.tableId ?? null), [profile?.tableId, presenceTables]);
-  const mockTablePeople = useMemo(() => {
-    const pool = [
-      { initials: "JR", occupation: "UX Designer" },
-      { initials: "AL", occupation: "Grad Student" },
-      { initials: "KW", occupation: "Freelance Writer" },
-      { initials: "DP", occupation: "Product Manager" },
-      { initials: "SN", occupation: "Photographer" },
-      { initials: "MT", occupation: "Software Engineer" },
-      { initials: "RB", occupation: "Music Producer" },
-      { initials: "EV", occupation: "Yoga Instructor" },
-    ];
-    if (!selectedTable || !selectedTableMeta?.seats) return [];
-    let hash = 0;
-    for (let i = 0; i < selectedTable.length; i++) hash = ((hash << 5) - hash + selectedTable.charCodeAt(i)) | 0;
-    const count = Math.abs(hash) % (selectedTableMeta.seats + 1);
-    const start = Math.abs(hash) % pool.length;
-    return Array.from({ length: count }, (_, i) => pool[(start + i) % pool.length]);
-  }, [selectedTable, selectedTableMeta?.seats]);
-  const mockOccupancy = mockTablePeople.length;
+  const normalizedActiveUsers = useMemo(
+    () => normalizeActiveUsers(activeUsers, presenceTables),
+    [activeUsers, presenceTables],
+  );
+  const tableOccupancy = useMemo(
+    () => countTableOccupancy(normalizedActiveUsers),
+    [normalizedActiveUsers],
+  );
+  const selectedTableOccupants = useMemo(() => {
+    if (!selectedTableMeta?.id) return [];
+    return normalizedActiveUsers.filter((user) => user.tableId === selectedTableMeta.id);
+  }, [normalizedActiveUsers, selectedTableMeta]);
+  const selectedTableOccupancy = selectedTableMeta?.id ? tableOccupancy[selectedTableMeta.id] ?? 0 : 0;
+  const selectedTableIsFull = Boolean(
+    selectedTableMeta?.seats && selectedTableOccupancy >= (selectedTableMeta?.seats ?? 0),
+  );
+  const profileTableId = profileTableMeta?.id ?? profile?.tableId ?? null;
+  const canSitAtSelectedTable = Boolean(
+    selectedTableMeta &&
+      profileReady &&
+      profileTableId !== selectedTableMeta.id &&
+      !selectedTableIsFull,
+  );
 
   /* Status dot */
   const statusColor = !presenceAvailable
@@ -318,7 +458,20 @@ export default function VenueFloorPage() {
               floorWidth={activeZone.floorWidth}
               floorHeight={activeZone.floorHeight}
               selectedTable={selectedTable}
-              selectedTableLabel={selectedTableMeta?.label ?? null}
+              selectedTableMeta={selectedTableMeta}
+              selectedTableOccupants={selectedTableOccupants}
+              selectedTableOccupancy={selectedTableOccupancy}
+              selectedTableIsFull={selectedTableIsFull}
+              profileTableId={profileTableId}
+              profileReady={profileReady}
+              syncing={syncing}
+              tablePresenceError={tablePresenceError}
+              onCheckIn={() => {
+                if (selectedTableMeta) {
+                  void setProfileTable(selectedTableMeta.id);
+                }
+              }}
+              onClearSelection={() => setSelectedTable(null)}
               onSelectTable={setSelectedTable}
             />
           </div>
@@ -370,12 +523,13 @@ export default function VenueFloorPage() {
               <ArrowRight size={13} />
             </button>
 
-            {selectedTable && profileReady && profile?.tableId !== selectedTable && (
+            {selectedTableMeta && profileReady && profileTableId !== selectedTableMeta.id && (
               <button
-                onClick={() => { void setProfileTable(selectedTable); }}
-                className="flex items-center justify-center gap-2 w-full rounded-xl bg-surface-container-high px-4 py-2.5 text-xs font-bold text-on-surface hover:bg-surface-container-highest transition-all"
+                onClick={() => { void setProfileTable(selectedTableMeta.id); }}
+                disabled={!canSitAtSelectedTable}
+                className="flex items-center justify-center gap-2 w-full rounded-xl bg-surface-container-high px-4 py-2.5 text-xs font-bold text-on-surface hover:bg-surface-container-highest transition-all disabled:opacity-50"
               >
-                Sit at table {selectedTableMeta?.label ?? selectedTable}
+                {selectedTableIsFull ? "Table full" : `Sit at table ${selectedTableMeta.label}`}
               </button>
             )}
           </div>
@@ -388,24 +542,51 @@ export default function VenueFloorPage() {
             <p className="text-2xl font-extrabold text-on-surface leading-none mb-1">
               {selectedTableMeta.label}
             </p>
-            {selectedTableMeta.seats > 0 && (
-              <p className="text-xs text-on-surface-variant">{mockOccupancy}/{selectedTableMeta.seats} seated · {selectedTableMeta.zoneName}</p>
+            {selectedTableMeta.seats > 0 && tablePresenceError === "__legacy__" && (
+              <p className="text-xs text-on-surface-variant">{selectedTableMeta.seats} seats · {selectedTableMeta.zoneName}</p>
             )}
-            {mockTablePeople.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-outline-variant/15 space-y-2">
-                {mockTablePeople.map((person) => (
-                  <div key={person.initials} className="flex items-center gap-2.5">
-                    <div className="h-7 w-7 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-[10px] font-bold shrink-0">
-                      {person.initials}
-                    </div>
-                    <span className="text-xs text-on-surface font-medium">{person.occupation}</span>
+            <p className="text-xs text-on-surface-variant">
+              {selectedTableMeta.seats > 0
+                ? `${selectedTableOccupancy}/${selectedTableMeta.seats} occupied · ${selectedTableMeta.zoneName}`
+                : selectedTableMeta.zoneName}
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              {selectedTableOccupants.length > 0 ? (
+                <>
+                  <div className="flex items-center">
+                    {selectedTableOccupants.slice(0, 4).map((occupant, index) => (
+                      <span
+                        key={occupant.sessionId}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-[11px] font-extrabold text-primary shadow-sm ${
+                          index === 0 ? "" : "-ml-2"
+                        }`}
+                      >
+                        {occupant.initials}
+                      </span>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            {mockOccupancy === 0 && (
-              <p className="mt-2 text-[11px] text-on-surface-variant/60 italic">No one seated yet</p>
-            )}
+                  <p className="text-[11px] font-semibold text-on-surface-variant">
+                    {selectedTableOccupants.length} here now
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center">
+                    {Array.from({ length: Math.min(selectedTableMeta.seats || 3, 3) }).map((_, index) => (
+                      <span
+                        key={`empty:${selectedTableMeta.id}:${index}`}
+                        className={`flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-outline-variant/40 bg-surface ${
+                          index === 0 ? "" : "-ml-2"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[11px] font-semibold text-on-surface-variant">
+                    {tablePresenceError || "Open seats"}
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         )}
 
@@ -433,7 +614,7 @@ export default function VenueFloorPage() {
             </div>
             <div>
               <p className="text-xs font-bold text-on-surface">See People</p>
-              <p className="text-[10px] text-on-surface-variant mt-0.5">Who's here now</p>
+              <p className="text-[10px] text-on-surface-variant mt-0.5">Who&apos;s here now</p>
             </div>
           </Link>
         </div>
@@ -463,6 +644,7 @@ export default function VenueFloorPage() {
         venueName={venue.name}
         draft={draft}
         tables={presenceTables}
+        tableOccupancy={tableOccupancy}
         saving={syncing}
         error={saveError}
         onClose={() => setEditorOpen(false)}
@@ -477,19 +659,40 @@ export default function VenueFloorPage() {
 
 function ReadOnlyCanvas({
   outline, elements, floorWidth, floorHeight,
-  selectedTable, selectedTableLabel, onSelectTable,
+  selectedTable,
+  selectedTableMeta,
+  selectedTableOccupants,
+  selectedTableOccupancy,
+  selectedTableIsFull,
+  profileTableId,
+  profileReady,
+  syncing,
+  tablePresenceError,
+  onCheckIn,
+  onClearSelection,
+  onSelectTable,
 }: {
   outline: FloorPoint[];
   elements: PlacedElement[];
   floorWidth: number;
   floorHeight: number;
   selectedTable: string | null;
-  selectedTableLabel: string | null;
+  selectedTableMeta: TableSummary | null;
+  selectedTableOccupants: ActiveUserRecord[];
+  selectedTableOccupancy: number;
+  selectedTableIsFull: boolean;
+  profileTableId: string | null;
+  profileReady: boolean;
+  syncing: boolean;
+  tablePresenceError: string;
+  onCheckIn: () => void;
+  onClearSelection: () => void;
   onSelectTable: (id: string | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [spotlightSessionId, setSpotlightSessionId] = useState<string | null>(null);
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
 
@@ -509,6 +712,22 @@ function ReadOnlyCanvas({
     setZoom(z);
     setPan({ x: (clientWidth - floorWidth * z) / 2, y: (clientHeight - floorHeight * z) / 2 });
   }, [floorWidth, floorHeight]);
+
+  const handleZoomOut = useCallback(() => {
+    if (!containerRef.current) return;
+    const newZ = Math.max(MIN_ZOOM, zoom * 0.85);
+    const { clientWidth: cw, clientHeight: ch } = containerRef.current;
+    setPan((p) => ({ x: cw / 2 - (cw / 2 - p.x) * (newZ / zoom), y: ch / 2 - (ch / 2 - p.y) * (newZ / zoom) }));
+    setZoom(newZ);
+  }, [zoom]);
+
+  const handleZoomIn = useCallback(() => {
+    if (!containerRef.current) return;
+    const newZ = Math.min(MAX_ZOOM, zoom * 1.15);
+    const { clientWidth: cw, clientHeight: ch } = containerRef.current;
+    setPan((p) => ({ x: cw / 2 - (cw / 2 - p.x) * (newZ / zoom), y: ch / 2 - (ch / 2 - p.y) * (newZ / zoom) }));
+    setZoom(newZ);
+  }, [zoom]);
 
   useEffect(() => { fitToView(); }, [fitToView]);
 
@@ -561,6 +780,20 @@ function ReadOnlyCanvas({
   }
 
   const zoomPct = Math.round(zoom * 100);
+  const canCheckIn = Boolean(
+    selectedTableMeta &&
+      profileReady &&
+      profileTableId !== selectedTableMeta.id &&
+      !selectedTableIsFull,
+  );
+  const spotlightOccupant =
+    selectedTableOccupants.find((occupant) => occupant.sessionId === spotlightSessionId) ??
+    selectedTableOccupants[0] ??
+    null;
+  const visibleOccupants = selectedTableOccupants.slice(0, 5);
+  const emptySeats = selectedTableMeta?.seats
+    ? Math.max(0, Math.min(selectedTableMeta.seats - selectedTableOccupancy, 3))
+    : 0;
 
   return (
     <div
@@ -616,44 +849,257 @@ function ReadOnlyCanvas({
         </div>
       </div>
 
+      {/* ── Table popup ──────────────────────────────────────
+          Mobile  → bottom sheet anchored to the canvas floor
+          Desktop → floating card top-left                    */}
+      {selectedTableMeta && (
+        <>
+          {/* ── Mobile bottom sheet ── */}
+          <div
+            className="lg:hidden absolute bottom-0 left-0 right-0 z-20 rounded-t-[1.75rem] bg-surface/98 shadow-2xl ring-1 ring-outline-variant/10 backdrop-blur-sm"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            {/* Pill handle */}
+            <div className="flex justify-center pt-3 pb-1 pointer-events-none">
+              <div className="w-9 h-1 rounded-full bg-outline-variant/40" />
+            </div>
+
+            {/* Scrollable body — capped so it never swallows the whole screen */}
+            <div
+              className="overflow-y-auto px-4 pb-8 pt-2"
+              style={{ maxHeight: "52vh" }}
+            >
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Social</p>
+                  <h3 className="mt-0.5 text-xl font-extrabold text-on-surface leading-tight">
+                    Table {selectedTableMeta.label}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-on-surface-variant">
+                    {selectedTableMeta.seats > 0
+                      ? `${selectedTableOccupancy}/${selectedTableMeta.seats} filled · ${selectedTableMeta.zoneName}`
+                      : selectedTableMeta.zoneName}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClearSelection}
+                  className="mt-0.5 rounded-full bg-surface-container-high px-3 py-1.5 text-[11px] font-semibold text-on-surface shrink-0"
+                >
+                  Close
+                </button>
+              </div>
+
+              <TablePopupBody
+                selectedTableMeta={selectedTableMeta}
+                visibleOccupants={visibleOccupants}
+                emptySeats={emptySeats}
+                spotlightOccupant={spotlightOccupant}
+                spotlightSessionId={spotlightSessionId}
+                setSpotlightSessionId={setSpotlightSessionId}
+                tablePresenceError={tablePresenceError}
+                profileTableId={profileTableId}
+                selectedTableIsFull={selectedTableIsFull}
+                syncing={syncing}
+                canCheckIn={canCheckIn}
+                onCheckIn={onCheckIn}
+              />
+            </div>
+          </div>
+
+          {/* ── Desktop floating card ── */}
+          <div
+            className="hidden lg:block absolute left-3 top-3 z-20 w-[min(18rem,calc(100%-1.5rem))] rounded-[1.5rem] bg-surface/95 p-3.5 shadow-xl ring-1 ring-outline-variant/10 backdrop-blur-sm"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">Social</p>
+                <h3 className="mt-1 text-xl font-extrabold text-on-surface">
+                  Table {selectedTableMeta.label}
+                </h3>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  {selectedTableMeta.seats > 0
+                    ? `${selectedTableOccupancy}/${selectedTableMeta.seats} filled · ${selectedTableMeta.zoneName}`
+                    : selectedTableMeta.zoneName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClearSelection}
+                className="rounded-full bg-surface-container-high px-3 py-1.5 text-[11px] font-semibold text-on-surface shrink-0"
+              >
+                Close
+              </button>
+            </div>
+
+            <TablePopupBody
+              selectedTableMeta={selectedTableMeta}
+              visibleOccupants={visibleOccupants}
+              emptySeats={emptySeats}
+              spotlightOccupant={spotlightOccupant}
+              spotlightSessionId={spotlightSessionId}
+              setSpotlightSessionId={setSpotlightSessionId}
+              tablePresenceError={tablePresenceError}
+              profileTableId={profileTableId}
+              selectedTableIsFull={selectedTableIsFull}
+              syncing={syncing}
+              canCheckIn={canCheckIn}
+              onCheckIn={onCheckIn}
+            />
+          </div>
+        </>
+      )}
+
       {/* Zoom controls */}
       <div className="absolute bottom-3 right-3 bg-surface/90 backdrop-blur-sm p-1 rounded-xl shadow-sm flex items-center gap-1 z-10 border border-outline-variant/10">
-        {[
-          {
-            icon: Minus, label: "Zoom out",
-            onClick: () => {
-              if (!containerRef.current) return;
-              const newZ = Math.max(MIN_ZOOM, zoom * 0.85);
-              const { clientWidth: cw, clientHeight: ch } = containerRef.current;
-              setPan((p) => ({ x: cw / 2 - (cw / 2 - p.x) * (newZ / zoom), y: ch / 2 - (ch / 2 - p.y) * (newZ / zoom) }));
-              setZoom(newZ);
-            },
-          },
-        ].map(({ icon: Icon, label, onClick }) => (
-          <button key={label} onClick={onClick} aria-label={label} className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors">
-            <Icon size={13} />
-          </button>
-        ))}
+        <button
+          onClick={handleZoomOut}
+          aria-label="Zoom out"
+          className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
+        >
+          <Minus size={13} />
+        </button>
         <span className="text-[10px] font-bold text-on-surface px-1 min-w-[2.5rem] text-center">{zoomPct}%</span>
         <button
-          onClick={() => {
-            if (!containerRef.current) return;
-            const newZ = Math.min(MAX_ZOOM, zoom * 1.15);
-            const { clientWidth: cw, clientHeight: ch } = containerRef.current;
-            setPan((p) => ({ x: cw / 2 - (cw / 2 - p.x) * (newZ / zoom), y: ch / 2 - (ch / 2 - p.y) * (newZ / zoom) }));
-            setZoom(newZ);
-          }}
+          onClick={handleZoomIn}
           aria-label="Zoom in"
           className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
         >
           <Plus size={13} />
         </button>
         <div className="w-px h-4 bg-outline-variant/30 mx-0.5" />
-        <button onClick={fitToView} aria-label="Fit to view" className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors">
+        <button
+          onClick={fitToView}
+          aria-label="Fit to view"
+          className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
+        >
           <Maximize size={13} />
         </button>
       </div>
     </div>
+  );
+}
+
+/* ─── TablePopupBody ─────────────────────────────────────
+   Shared between the mobile bottom sheet and desktop card  */
+
+function TablePopupBody({
+  selectedTableMeta,
+  visibleOccupants,
+  emptySeats,
+  spotlightOccupant,
+  spotlightSessionId,
+  setSpotlightSessionId,
+  tablePresenceError,
+  profileTableId,
+  selectedTableIsFull,
+  syncing,
+  canCheckIn,
+  onCheckIn,
+}: {
+  selectedTableMeta: TableSummary;
+  visibleOccupants: ActiveUserRecord[];
+  emptySeats: number;
+  spotlightOccupant: ActiveUserRecord | null;
+  spotlightSessionId: string | null;
+  setSpotlightSessionId: (id: string | null) => void;
+  tablePresenceError: string;
+  profileTableId: string | null;
+  selectedTableIsFull: boolean;
+  syncing: boolean;
+  canCheckIn: boolean;
+  onCheckIn: () => void;
+}) {
+  return (
+    <>
+      <div className="mt-1">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">
+          Current occupants
+        </p>
+
+        {visibleOccupants.length > 0 ? (
+          <>
+            <div className="mt-3 flex items-center">
+              {visibleOccupants.map((occupant, index) => {
+                const active = spotlightOccupant?.sessionId === occupant.sessionId;
+
+                return (
+                  <button
+                    key={occupant.sessionId}
+                    type="button"
+                    onMouseEnter={() => setSpotlightSessionId(occupant.sessionId)}
+                    onFocus={() => setSpotlightSessionId(occupant.sessionId)}
+                    onClick={() =>
+                      setSpotlightSessionId(
+                        spotlightSessionId === occupant.sessionId ? null : occupant.sessionId,
+                      )
+                    }
+                    className={`relative flex h-11 w-11 items-center justify-center rounded-full border text-sm font-extrabold shadow-sm transition-all duration-200 ${
+                      active
+                        ? "z-10 border-primary bg-primary text-on-primary -translate-y-1 scale-105"
+                        : "border-primary/15 bg-primary/10 text-primary hover:-translate-y-0.5"
+                    } ${index === 0 ? "" : "-ml-2.5"}`}
+                    style={{ rotate: active ? "0deg" : `${(index - 1) * 4}deg` }}
+                    aria-label={`${occupant.initials} at this table`}
+                  >
+                    {occupant.initials}
+                  </button>
+                );
+              })}
+
+              {Array.from({ length: emptySeats }).map((_, index) => (
+                <span
+                  key={`empty:${selectedTableMeta.id}:${index}`}
+                  className={`${visibleOccupants.length + index === 0 ? "" : "-ml-2.5"} flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-outline-variant/40 bg-surface`}
+                />
+              ))}
+            </div>
+
+            {spotlightOccupant ? (
+              <div className="mt-3 rounded-2xl bg-surface-container-low px-3 py-2 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">
+                  {spotlightOccupant.initials}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-on-surface">
+                  {spotlightOccupant.occupation}
+                </p>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="mt-3 flex items-center gap-2">
+            {Array.from({ length: Math.min(selectedTableMeta.seats || 3, 3) }).map((_, index) => (
+              <span
+                key={`placeholder:${selectedTableMeta.id}:${index}`}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-dashed border-outline-variant/40 bg-surface"
+              />
+            ))}
+            <p className="text-sm text-on-surface-variant">
+              {tablePresenceError || "No one has checked in here yet."}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onCheckIn}
+        disabled={!selectedTableMeta || syncing || !canCheckIn}
+        className="mt-4 w-full rounded-full bg-primary px-4 py-3 text-sm font-bold text-on-primary transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/90 disabled:opacity-50 disabled:hover:translate-y-0"
+      >
+        {profileTableId === selectedTableMeta.id
+          ? "You are checked in here"
+          : selectedTableIsFull
+            ? "Table is full"
+            : syncing
+              ? "Saving..."
+              : "Check in here"}
+      </button>
+    </>
   );
 }
 

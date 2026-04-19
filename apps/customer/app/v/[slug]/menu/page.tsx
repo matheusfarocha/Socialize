@@ -81,7 +81,7 @@ const defaultCheckout: CheckoutState = {
   tableId: "",
 };
 
-const AR_MENU_URL = "https://ar-menu-one.vercel.app/";
+const AR_MENU_URL = "https://ar-menu-one.vercel.app/ar";
 
 /* ─── Helpers ───────────────────────────────────────── */
 
