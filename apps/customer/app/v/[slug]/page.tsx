@@ -26,6 +26,7 @@ import {
   type StoredOrder,
   writeCart,
 } from "@/lib/order-storage";
+import { endSession, logScan, startSession } from "@/lib/tracking";
 
 interface FloorPoint {
   x: number;
@@ -159,6 +160,7 @@ export default function VenuePage() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [submittedOrder, setSubmittedOrder] = useState<StoredOrder | null>(null);
+  const sessionRef = useRef<{ id: string; startedAt: Date; tableId: string | null } | null>(null);
   const cartStorageSlug = venue?.slug ?? slug;
   const cartItems = useSyncExternalStore(
     (callback) => subscribeCart(cartStorageSlug, callback),
@@ -286,11 +288,46 @@ export default function VenuePage() {
           .filter((categoryName) => mappedMenu.some((item) => item.category === categoryName)),
         menuItems: mappedMenu,
       });
+      logScan(venueRow.id).catch(() => {});
       setLoading(false);
     }
 
     load().catch(() => setLoading(false));
   }, [router, slug]);
+
+  useEffect(() => {
+    if (!venue?.id) return;
+    if (!selectedTable) return;
+    if (sessionRef.current?.tableId === selectedTable) return;
+
+    const prev = sessionRef.current;
+    if (prev) {
+      endSession(prev.id, { startedAt: prev.startedAt });
+    }
+
+    let cancelled = false;
+    startSession(venue.id, selectedTable).then((rowId) => {
+      if (cancelled || !rowId) return;
+      sessionRef.current = { id: rowId, startedAt: new Date(), tableId: selectedTable };
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [venue?.id, selectedTable]);
+
+  useEffect(() => {
+    function finalize() {
+      const active = sessionRef.current;
+      if (!active) return;
+      endSession(active.id, { startedAt: active.startedAt });
+      sessionRef.current = null;
+    }
+    window.addEventListener("beforeunload", finalize);
+    return () => {
+      window.removeEventListener("beforeunload", finalize);
+      finalize();
+    };
+  }, []);
 
   const tableOptions = useMemo(
     () =>
@@ -493,6 +530,16 @@ export default function VenuePage() {
       );
       setSubmittingOrder(false);
       return;
+    }
+
+    const activeSession = sessionRef.current;
+    if (activeSession) {
+      endSession(activeSession.id, {
+        startedAt: activeSession.startedAt,
+        orderTotal: total,
+        orderCount: 1,
+      });
+      sessionRef.current = null;
     }
 
     clearCart(venue.slug);

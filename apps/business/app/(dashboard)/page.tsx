@@ -9,6 +9,7 @@ import { BarChart } from "@/components/ui/bar-chart";
 import { RevenueCard } from "@/components/dashboard/revenue-card";
 import { TopSellers } from "@/components/dashboard/top-sellers";
 import { QrCta } from "@/components/dashboard/qr-cta";
+import { ScanCountCard } from "@/components/dashboard/scan-count-card";
 import {
   buildOrderDashboardMetrics,
   fetchOwnedVenueOrders,
@@ -176,6 +177,8 @@ export default function DashboardPage() {
                   </>
                 }
               />
+
+              <ScanCountCard venueSlug={venue?.slug} />
             </div>
 
             <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1 min-h-0">

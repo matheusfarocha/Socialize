@@ -1,6 +1,7 @@
 import { TopBar } from "@/components/top-bar";
 import { Droplets, Leaf, Package } from "lucide-react";
 import { insights } from "@/lib/mock-data";
+import { PerTableActivity } from "@/components/insights/per-table-activity";
 
 export default function InsightsPage() {
   return (
@@ -18,6 +19,8 @@ export default function InsightsPage() {
         </div>
 
         <div className="space-y-10">
+          <PerTableActivity />
+
           {insights.map((insight) => {
             const TagIcon = insight.tagIcon;
             return (

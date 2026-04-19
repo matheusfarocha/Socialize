@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { logScan } from "@/lib/tracking";
 import { Coffee, MapPin, Clock, Loader2, Minus, Plus, Maximize } from "lucide-react";
 
 interface FloorPoint {
@@ -47,10 +48,12 @@ function outlineToPath(points: FloorPoint[]): string {
 
 export default function VenuePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const tableParam = searchParams.get("table");
   const [venue, setVenue] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [selectedTable, setSelectedTable] = useState<string | null>(tableParam);
 
   useEffect(() => {
     async function load() {
@@ -60,6 +63,8 @@ export default function VenuePage() {
         .eq("slug", slug)
         .single();
       if (!venueRow) { setLoading(false); return; }
+
+      logScan(venueRow.id, tableParam ?? undefined);
 
       const { data: zone } = await supabase
         .from("zones")
