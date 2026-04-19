@@ -1,35 +1,28 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { notFound, useParams, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
-  CheckCircle2,
-  Clock,
-  Coffee,
   Layers,
   Loader2,
   MapPin,
   Maximize,
   Minus,
   Plus,
-  ShoppingBag,
+  UtensilsCrossed,
   Users,
 } from "lucide-react";
 import { PresenceProfileModal } from "@/components/social/presence-profile-modal";
-import {
-  appendOrder,
-  clearCart,
-  readCart,
-  subscribeCart,
-  type FulfillmentType,
-  type PaymentMethod,
-  type StoredCartItem,
-  type StoredOrder,
-  writeCart,
-} from "@/lib/order-storage";
 import {
   buildPresenceTableId,
   findTableSummary,
@@ -39,10 +32,9 @@ import {
 import { createPublicSupabaseClient } from "@/lib/supabase";
 import { useVenuePresence } from "@/lib/use-venue-presence";
 
-interface FloorPoint {
-  x: number;
-  y: number;
-}
+/* ─── Types ─────────────────────────────────────────── */
+
+interface FloorPoint { x: number; y: number }
 
 interface PlacedElement {
   id: string;
@@ -56,14 +48,6 @@ interface PlacedElement {
   label?: string;
   w?: number;
   h?: number;
-}
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  category: string;
 }
 
 interface ZoneData {
@@ -81,69 +65,30 @@ interface VenueData {
   name: string;
   branchName: string;
   zones: ZoneData[];
-  categories: string[];
-  menuItems: MenuItem[];
 }
 
-interface CheckoutState {
-  customerName: string;
-  customerEmail: string;
-  notes: string;
-  fulfillmentType: FulfillmentType;
-  paymentMethod: PaymentMethod;
-  cardholderName: string;
-  cardLastFour: string;
-}
+/* ─── Constants ─────────────────────────────────────── */
 
 const publicSupabase = createPublicSupabaseClient();
 
-const defaultOutline = [
-  { x: 0, y: 0 },
-  { x: 100, y: 0 },
-  { x: 100, y: 100 },
-  { x: 0, y: 100 },
+const defaultOutline: FloorPoint[] = [
+  { x: 0, y: 0 }, { x: 100, y: 0 },
+  { x: 100, y: 100 }, { x: 0, y: 100 },
 ];
-const emptyCart: StoredCartItem[] = [];
 
-const defaultCheckout: CheckoutState = {
-  customerName: "",
-  customerEmail: "",
-  notes: "",
-  fulfillmentType: "pickup",
-  paymentMethod: "card",
-  cardholderName: "",
-  cardLastFour: "",
-};
+const MIN_ZOOM = 0.15;
+const MAX_ZOOM = 4;
+
+/* ─── Helpers ───────────────────────────────────────── */
 
 function outlineToPath(points: FloorPoint[]): string {
   if (points.length < 3) return "";
-  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ") + " Z";
+  return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z";
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
-}
+/* ─── Page ───────────────────────────────────────────── */
 
-function toCartItem(item: MenuItem): StoredCartItem {
-  return {
-    itemId: item.id,
-    name: item.name,
-    description: item.description,
-    category: item.category,
-    price: item.price,
-    quantity: 1,
-  };
-}
-
-function createOrderId() {
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `SOC-${rand}`;
-}
-
-export default function VenuePage() {
+export default function VenueFloorPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const slug = params.slug as string;
@@ -151,46 +96,27 @@ export default function VenuePage() {
 
   const [venue, setVenue] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [activeZoneIndex, setActiveZoneIndex] = useState(0);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [checkout, setCheckout] = useState<CheckoutState>(defaultCheckout);
-  const [submittingOrder, setSubmittingOrder] = useState(false);
-  const [checkoutError, setCheckoutError] = useState("");
-  const [submittedOrder, setSubmittedOrder] = useState<StoredOrder | null>(null);
-  const cartStorageSlug = venue?.slug ?? slug;
-  const cartItems = useSyncExternalStore(
-    (callback) => subscribeCart(cartStorageSlug, callback),
-    () => readCart(cartStorageSlug),
-    () => emptyCart,
-  );
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
 
+  /* Presence */
   const presenceVenue: VenueSummary | null = useMemo(
-    () =>
-      venue
-        ? {
-            id: venue.id,
-            slug: venue.slug,
-            name: venue.name,
-            branchName: venue.branchName,
-          }
-        : null,
+    () => venue ? { id: venue.id, slug: venue.slug, name: venue.name, branchName: venue.branchName } : null,
     [venue],
   );
 
   const presenceTables: TableSummary[] = useMemo(
-    () =>
-      (venue?.zones ?? []).flatMap((zone) =>
-        zone.elements
-          .filter((element) => element.kind === "table")
-          .map((table) => ({
-            id: table.id,
-            label: table.label ?? table.id,
-            seats: table.seats ?? 0,
-            zoneId: zone.id,
-            zoneName: zone.name,
-          })),
-      ),
+    () => (venue?.zones ?? []).flatMap((zone) =>
+      zone.elements
+        .filter((el) => el.kind === "table")
+        .map((el) => ({
+          id: el.id,
+          label: el.label ?? el.id,
+          seats: el.seats ?? 0,
+          zoneId: zone.id,
+          zoneName: zone.name,
+        })),
+    ),
     [venue],
   );
 
@@ -208,11 +134,9 @@ export default function VenuePage() {
     presenceVisible,
     presenceAvailable,
     setProfileTable,
-  } = useVenuePresence({
-    venue: presenceVenue,
-    defaultTableId: requestedTable,
-  });
+  } = useVenuePresence({ venue: presenceVenue, defaultTableId: requestedTable });
 
+  /* Load venue */
   useEffect(() => {
     async function load() {
       const { data: venueRow } = await publicSupabase
@@ -221,10 +145,7 @@ export default function VenuePage() {
         .eq("slug", slug)
         .single();
 
-      if (!venueRow) {
-        setLoading(false);
-        return;
-      }
+      if (!venueRow) { setLoading(false); return; }
 
       const { data: zoneRows } = await publicSupabase
         .from("zones")
@@ -233,815 +154,276 @@ export default function VenuePage() {
         .order("sort_order");
 
       const zones: ZoneData[] = [];
-      for (const zr of (zoneRows ?? [])) {
-        const { data: tables } = await publicSupabase
-          .from("tables")
-          .select("identifier, seat_count, shape, pos_x, pos_y, rotation")
-          .eq("zone_id", zr.id);
-
-        const { data: structural } = await publicSupabase
-          .from("structural_elements")
-          .select("element_type, label, pos_x, pos_y, rotation, size_w, size_h")
-          .eq("zone_id", zr.id);
+      for (const zr of zoneRows ?? []) {
+        const [{ data: tables }, { data: structural }] = await Promise.all([
+          publicSupabase.from("tables")
+            .select("identifier, seat_count, shape, pos_x, pos_y, rotation")
+            .eq("zone_id", zr.id),
+          publicSupabase.from("structural_elements")
+            .select("element_type, label, pos_x, pos_y, rotation, size_w, size_h")
+            .eq("zone_id", zr.id),
+        ]);
 
         zones.push({
           id: zr.id,
-          name: zr.name,
+          name: zr.name ?? "Main Floor",
           floorWidth: zr.floor_width ?? 800,
           floorHeight: zr.floor_height ?? 600,
           outline: (zr.floor_outline as FloorPoint[]) ?? defaultOutline,
           elements: [
-            ...(tables ?? []).map((table, index) => ({
-              id: buildPresenceTableId({
-                zoneId: zr.id,
-                identifier: table.identifier,
-                x: table.pos_x,
-                y: table.pos_y,
-              }),
-              renderKey: `table:${zr.id}:${table.identifier}:${table.pos_x ?? "na"}:${table.pos_y ?? "na"}:${index}`,
+            ...(tables ?? []).map((t, i) => ({
+              id: buildPresenceTableId({ zoneId: zr.id, identifier: t.identifier, x: t.pos_x, y: t.pos_y }),
+              renderKey: `table:${zr.id}:${t.identifier}:${t.pos_x ?? "na"}:${t.pos_y ?? "na"}:${i}`,
               kind: "table" as const,
-              type: table.shape,
-              x: table.pos_x,
-              y: table.pos_y,
-              rotation: table.rotation,
-              seats: table.seat_count,
-              label: table.identifier,
+              type: t.shape,
+              x: t.pos_x, y: t.pos_y, rotation: t.rotation,
+              seats: t.seat_count, label: t.identifier,
             })),
-            ...(structural ?? []).map((element, index) => ({
-              renderKey: `structural:${zr.id}:${element.element_type}:${element.pos_x ?? "na"}:${element.pos_y ?? "na"}:${index}`,
-              id:
-                element.element_type === "bar"
-                  ? `BAR-${String(index + 1).padStart(2, "0")}`
-                  : element.element_type === "entrance"
-                    ? `ENT-${String(index + 1).padStart(2, "0")}`
-                    : `W-${String(index + 1).padStart(2, "0")}`,
+            ...(structural ?? []).map((s, i) => ({
+              renderKey: `structural:${zr.id}:${s.element_type}:${s.pos_x ?? "na"}:${s.pos_y ?? "na"}:${i}`,
+              id: s.element_type === "bar"
+                ? `BAR-${String(i + 1).padStart(2, "0")}`
+                : s.element_type === "entrance"
+                  ? `ENT-${String(i + 1).padStart(2, "0")}`
+                  : `W-${String(i + 1).padStart(2, "0")}`,
               kind: "structural" as const,
-              type: element.element_type,
-              x: element.pos_x,
-              y: element.pos_y,
-              rotation: element.rotation,
-              label: element.label || undefined,
-              w: element.size_w ?? undefined,
-              h: element.size_h ?? undefined,
+              type: s.element_type,
+              x: s.pos_x, y: s.pos_y, rotation: s.rotation,
+              label: s.label || undefined,
+              w: s.size_w ?? undefined, h: s.size_h ?? undefined,
             })),
           ],
         });
       }
 
-      const { data: categoryRows } = await publicSupabase
-        .from("menu_categories")
-        .select("id, name, sort_order")
-        .eq("venue_id", venueRow.id)
-        .order("sort_order", { ascending: true });
-
-      const categoryIds = (categoryRows ?? []).map((category) => category.id);
-      const categoriesById = new Map(
-        (categoryRows ?? []).map((category) => [category.id, category.name]),
-      );
-
-      let mappedMenu: MenuItem[] = [];
-      if (categoryIds.length > 0) {
-        const { data: menuRows } = await publicSupabase
-          .from("menu_items")
-          .select("id, category_id, name, description, price, is_active, sort_order")
-          .in("category_id", categoryIds)
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true });
-
-        mappedMenu = (menuRows ?? []).map((row) => ({
-          id: row.id,
-          name: row.name,
-          description: row.description ?? "",
-          price: Number(row.price),
-          category: categoriesById.get(row.category_id) ?? "Other",
-        }));
-      }
-
-      setVenue({
-        id: venueRow.id,
-        slug: venueRow.slug,
-        name: venueRow.name,
-        branchName: venueRow.branch_name ?? "Main Floor",
-        zones,
-        categories: (categoryRows ?? [])
-          .map((category) => category.name)
-          .filter((categoryName) => mappedMenu.some((item) => item.category === categoryName)),
-        menuItems: mappedMenu,
-      });
+      setVenue({ id: venueRow.id, slug: venueRow.slug, name: venueRow.name, branchName: venueRow.branch_name ?? "Main Floor", zones });
       setLoading(false);
     }
-
     load().catch(() => setLoading(false));
   }, [slug]);
 
+  /* Sync requested table */
   useEffect(() => {
     if (!venue || !requestedTable) return;
-
-    const matchedTable = venue.zones
-      .flatMap((zone) =>
-        zone.elements
-          .filter((element) => element.kind === "table")
-          .map((element) => ({ zone, element })),
-      )
-      .find(({ element }) => element.id === requestedTable || element.label === requestedTable);
-
-    const nextZoneIndex = matchedTable
-      ? venue.zones.findIndex((zone) => zone.id === matchedTable.zone.id)
-      : -1;
-
-    if (nextZoneIndex >= 0) {
+    const match = venue.zones
+      .flatMap((z) => z.elements.filter((e) => e.kind === "table").map((e) => ({ z, e })))
+      .find(({ e }) => e.id === requestedTable || e.label === requestedTable);
+    const zoneIdx = match ? venue.zones.findIndex((z) => z.id === match.z.id) : -1;
+    if (zoneIdx >= 0) {
       startTransition(() => {
-        setActiveZoneIndex(nextZoneIndex);
-        setSelectedTable(matchedTable?.element.id ?? requestedTable);
+        setActiveZoneIndex(zoneIdx);
+        setSelectedTable(match?.e.id ?? requestedTable);
       });
     }
   }, [requestedTable, venue]);
 
   const activeZone = venue?.zones[activeZoneIndex] ?? null;
+  const selectedTableMeta = useMemo(() => findTableSummary(presenceTables, selectedTable), [selectedTable, presenceTables]);
+  const profileTableMeta = useMemo(() => findTableSummary(presenceTables, profile?.tableId ?? null), [profile?.tableId, presenceTables]);
 
-  const tableOptions = presenceTables;
-  const selectedTableMeta = useMemo(
-    () => findTableSummary(tableOptions, selectedTable),
-    [selectedTable, tableOptions],
-  );
-  const profileTableMeta = useMemo(
-    () => findTableSummary(tableOptions, profile?.tableId ?? null),
-    [profile?.tableId, tableOptions],
-  );
+  /* Status dot */
+  const statusColor = !presenceAvailable
+    ? "bg-rose-500"
+    : presenceVisible && presenceStatus === "active"
+      ? "bg-emerald-500"
+      : presenceVisible
+        ? "bg-amber-400"
+        : "bg-slate-400";
 
-  const subtotal = useMemo(
-    () => cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
-    [cartItems],
-  );
-  const serviceFee = useMemo(() => (subtotal > 0 ? Number((subtotal * 0.08).toFixed(2)) : 0), [subtotal]);
-  const total = subtotal + serviceFee;
-  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-
-  function commitCart(updater: (current: StoredCartItem[]) => StoredCartItem[]) {
-    writeCart(cartStorageSlug, updater(readCart(cartStorageSlug)));
-  }
-
-  function updateCartQuantity(itemId: string, nextQuantity: number) {
-    commitCart((current) => {
-      if (nextQuantity <= 0) {
-        return current.filter((item) => item.itemId !== itemId);
-      }
-
-      return current.map((item) =>
-        item.itemId === itemId ? { ...item, quantity: nextQuantity } : item,
-      );
-    });
-  }
-
-  function handleAddToCart(item: MenuItem) {
-    setCheckoutOpen(true);
-    setCheckoutError("");
-    commitCart((current) => {
-      const existing = current.find((entry) => entry.itemId === item.id);
-      if (existing) {
-        return current.map((entry) =>
-          entry.itemId === item.id ? { ...entry, quantity: entry.quantity + 1 } : entry,
-        );
-      }
-
-      return [...current, toCartItem(item)];
-    });
-  }
-
-  function handleCheckoutChange<K extends keyof CheckoutState>(field: K, value: CheckoutState[K]) {
-    setCheckout((current) => ({ ...current, [field]: value }));
-    setCheckoutError("");
-  }
-
-  function handleClearCart() {
-    clearCart(cartStorageSlug);
-  }
-
-  async function handleSubmitOrder() {
-    if (!venue || cartItems.length === 0 || submittingOrder) return;
-
-    const trimmedName = checkout.customerName.trim();
-    const trimmedEmail = checkout.customerEmail.trim();
-    const trimmedNotes = checkout.notes.trim();
-    const trimmedCardholderName = checkout.cardholderName.trim();
-    const trimmedCardLastFour = checkout.cardLastFour.trim();
-
-    if (!trimmedName) {
-      setCheckoutError("Please add the guest name for this order.");
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setCheckoutError("Please enter a valid email so we can send order updates.");
-      return;
-    }
-
-    if (checkout.fulfillmentType === "dine_in" && !selectedTable) {
-      setCheckoutError("Select a table on the floor plan before placing a dine-in order.");
-      return;
-    }
-
-    if (checkout.paymentMethod === "card") {
-      if (!trimmedCardholderName) {
-        setCheckoutError("Add the cardholder name for the payment step.");
-        return;
-      }
-
-      if (!/^\d{4}$/.test(trimmedCardLastFour)) {
-        setCheckoutError("Use the last 4 digits of the card to complete the mock payment step.");
-        return;
-      }
-    }
-
-    setSubmittingOrder(true);
-    setCheckoutError("");
-
-    const order: StoredOrder = {
-      id: createOrderId(),
-      venueSlug: venue.slug,
-      venueName: venue.name,
-      createdAt: new Date().toISOString(),
-      customerName: trimmedName,
-      customerEmail: trimmedEmail,
-      notes: trimmedNotes,
-      fulfillmentType: checkout.fulfillmentType,
-      selectedTableId:
-        checkout.fulfillmentType === "dine_in" ? selectedTableMeta?.label ?? selectedTable : null,
-      paymentMethod: checkout.paymentMethod,
-      cardLabel:
-        checkout.paymentMethod === "card" ? `${trimmedCardholderName} **** ${trimmedCardLastFour}` : null,
-      subtotal,
-      serviceFee,
-      total,
-      items: cartItems,
-      status: "submitted",
-    };
-
-    appendOrder(venue.slug, order);
-    clearCart(venue.slug);
-    setSubmittedOrder(order);
-    setCheckoutOpen(false);
-    setCheckout(defaultCheckout);
-    setSubmittingOrder(false);
-  }
+  const statusLabel = !presenceAvailable ? "Offline" : presenceVisible
+    ? presenceStatus === "active" ? "Active" : "Idle"
+    : "Not visible";
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 size={32} className="animate-spin text-primary" />
+      <div className="h-full flex items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-primary" />
       </div>
     );
   }
-
   if (!venue) notFound();
 
   return (
-    <div className="flex flex-1 flex-col bg-surface">
-      <header className="bg-primary px-6 py-5 text-on-primary">
-        <div className="mb-1 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-on-primary/20">
-            <Coffee size={18} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">{venue.name}</h1>
-            <p className="text-xs text-on-primary/80">{venue.branchName}</p>
-          </div>
-        </div>
-        <div className="mt-2 flex items-center gap-4 text-xs text-on-primary/80">
-          <span className="flex items-center gap-1">
-            <MapPin size={12} />
-            {venue.branchName}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock size={12} />
-            Ordering live now
-          </span>
-        </div>
-      </header>
+    <div className="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden">
 
-      <section className="px-4 pt-4">
-        <div className="rounded-[1.75rem] bg-surface-container-low p-4 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
-                People At The Cafe
-              </p>
-              <h2 className="mt-1 text-lg font-bold text-on-surface">
-                {presenceVisible && profile
-                  ? `You're visible as ${profile.initials}`
-                  : profileReady && profile
-                    ? presenceAvailable
-                      ? `Syncing ${profile.initials} into the live roster`
-                      : "Your profile is ready, but live presence is offline"
-                    : "Create a public cafe profile to join the live roster"}
-              </h2>
-              <p className="mt-2 text-sm text-on-surface-variant">
-                {presenceVisible && profile
-                  ? `${profile.occupation} - ${profile.interests}${profileTableMeta ? ` - Table ${profileTableMeta.label}` : ""}`
-                  : profileReady && profile
-                    ? presenceAvailable
-                      ? "Your profile is saved on this device. We are finishing the live presence sync now."
-                      : "Your profile is saved on this device, but the live presence backend is unavailable right now."
-                    : "Only initials, occupation, interests, and your current table are shown to other guests."}
-              </p>
-            </div>
+      {/* ── LEFT: Floor Plan ─────────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 lg:overflow-hidden">
 
-            <div className="flex flex-wrap gap-3">
-              <span className="inline-flex items-center gap-2 rounded-full bg-surface px-4 py-2 text-sm font-semibold text-on-surface">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    !presenceAvailable
-                      ? "bg-rose-500"
-                      : presenceVisible && presenceStatus === "active"
-                        ? "bg-green-500"
-                        : presenceVisible
-                          ? "bg-amber-500"
-                          : "bg-slate-400"
-                  }`}
-                />
-                {!presenceAvailable
-                  ? "Offline"
-                  : presenceVisible
-                    ? presenceStatus === "active"
-                      ? "Active"
-                      : "Idle"
-                    : "Not visible"}
-              </span>
-
-              <Link
-                href={`/people?venue=${encodeURIComponent(venue.slug)}`}
-                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
-              >
-                <Users size={16} />
-                Open people view
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => setEditorOpen(true)}
-                className="rounded-full bg-surface px-5 py-3 text-sm font-semibold text-on-surface"
-              >
-                {presenceVisible ? "Edit profile" : profileReady ? "Retry visibility" : "Go visible"}
-              </button>
-
-              {selectedTable && profileReady && profile?.tableId !== selectedTable ? (
+        {/* Zone tabs */}
+        {venue.zones.length > 1 && (
+          <div className="flex items-center gap-2 px-4 pt-4 pb-1 shrink-0">
+            <Layers size={13} className="text-on-surface-variant shrink-0" />
+            <div className="flex gap-1.5 overflow-x-auto">
+              {venue.zones.map((zone, i) => (
                 <button
-                  type="button"
-                  onClick={() => {
-                    void setProfileTable(selectedTable);
-                  }}
-                  className="rounded-full bg-secondary-container px-5 py-3 text-sm font-semibold text-on-secondary-container"
+                  key={zone.id}
+                  onClick={() => { setActiveZoneIndex(i); setSelectedTable(null); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                    i === activeZoneIndex
+                      ? "bg-primary text-on-primary"
+                      : "text-on-surface-variant hover:bg-surface-container-low"
+                  }`}
                 >
-                  Use table {selectedTableMeta?.label ?? selectedTable}
+                  {zone.name}
                 </button>
-              ) : null}
+              ))}
             </div>
           </div>
-        </div>
-      </section>
+        )}
 
-      {venue.zones.length > 1 && (
-        <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-          <Layers size={14} className="text-on-surface-variant" />
-          {venue.zones.map((zone, i) => (
-            <button
-              key={zone.id}
-              onClick={() => { setActiveZoneIndex(i); setSelectedTable(null); }}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                i === activeZoneIndex
-                  ? "bg-primary text-on-primary"
-                  : "text-on-surface-variant hover:bg-surface-container-low"
-              }`}
-            >
-              {zone.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {activeZone && (
-        <ReadOnlyCanvas
-          key={activeZone.id}
-          outline={activeZone.outline}
-          elements={activeZone.elements}
-          floorWidth={activeZone.floorWidth}
-          floorHeight={activeZone.floorHeight}
-          selectedTable={selectedTable}
-          selectedTableLabel={selectedTableMeta?.label ?? null}
-          onSelectTable={setSelectedTable}
-        />
-      )}
-
-      <section className="flex-1 px-4 pb-6">
-        <div className="mb-3 flex items-end justify-between gap-4">
+        {/* Canvas header */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-2 shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-on-surface">Menu</h2>
+            <h2 className="text-base font-bold text-on-surface">Floor Plan</h2>
             <p className="text-xs text-on-surface-variant">
-              Add dishes to cart, then head to checkout.
+              {selectedTable ? `Table ${selectedTableMeta?.label ?? selectedTable} selected` : "Tap a table to select it"}
             </p>
           </div>
-          <button
-            type="button"
-            data-testid="open-cart-button"
-            onClick={() => setCheckoutOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-4 py-2 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container-highest"
-          >
-            <ShoppingBag size={16} />
-            {cartCount} item{cartCount === 1 ? "" : "s"}
-          </button>
+          {selectedTable && (
+            <button
+              onClick={() => setSelectedTable(null)}
+              className="text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
+            >
+              Clear selection
+            </button>
+          )}
         </div>
 
-        {venue.menuItems.length === 0 ? (
-          <p className="text-sm text-on-surface-variant">No menu items yet.</p>
-        ) : (
-          <div className="space-y-6">
-            {venue.categories.map((category) => (
-              <div key={category}>
-                <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-primary">
-                  {category}
-                </h3>
-                <div className="space-y-3">
-                  {venue.menuItems
-                    .filter((item) => item.category === category)
-                    .map((item) => {
-                      const quantity = cartItems.find((entry) => entry.itemId === item.id)?.quantity ?? 0;
+        {/* Canvas — fills remaining height on desktop */}
+        {activeZone && (
+          <div className="flex-1 min-h-[300px] lg:min-h-0 px-4 pb-4">
+            <ReadOnlyCanvas
+              key={activeZone.id}
+              outline={activeZone.outline}
+              elements={activeZone.elements}
+              floorWidth={activeZone.floorWidth}
+              floorHeight={activeZone.floorHeight}
+              selectedTable={selectedTable}
+              selectedTableLabel={selectedTableMeta?.label ?? null}
+              onSelectTable={setSelectedTable}
+            />
+          </div>
+        )}
+      </div>
 
-                      return (
-                        <div
-                          key={item.id}
-                          className="rounded-2xl bg-surface-container-low px-4 py-4"
-                          data-testid={`menu-item-${item.id}`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-sm font-bold text-on-surface">{item.name}</h4>
-                              <p className="mt-1 text-xs text-on-surface-variant">
-                                {item.description}
-                              </p>
-                            </div>
-                            <span className="shrink-0 text-sm font-bold text-primary">
-                              {formatCurrency(item.price)}
-                            </span>
-                          </div>
-                          <div className="mt-4 flex items-center justify-between gap-3">
-                            <div className="text-[11px] font-medium text-on-surface-variant">
-                              {quantity > 0 ? `${quantity} in cart` : "Ready to add"}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {quantity > 0 ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    data-testid={`decrease-item-${item.id}`}
-                                    onClick={() => updateCartQuantity(item.id, quantity - 1)}
-                                    className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-container-high text-on-surface"
-                                    aria-label={`Remove one ${item.name}`}
-                                  >
-                                    <Minus size={16} />
-                                  </button>
-                                  <span
-                                    className="w-6 text-center text-sm font-bold text-on-surface"
-                                    data-testid={`cart-qty-${item.id}`}
-                                  >
-                                    {quantity}
-                                  </span>
-                                </>
-                              ) : null}
-                              <button
-                                type="button"
-                                data-testid={`add-item-${item.id}`}
-                                onClick={() => handleAddToCart(item)}
-                                className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
-                              >
-                                <Plus size={16} />
-                                Add
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+      {/* ── RIGHT: Info Panel ────────────────────────────── */}
+      <aside className="lg:w-72 lg:border-l lg:border-outline-variant/20 lg:overflow-y-auto shrink-0 px-4 pb-6 pt-0 lg:pt-5 space-y-3">
+
+        {/* Presence status card */}
+        <div className="rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10">
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className={`h-2.5 w-2.5 rounded-full ${statusColor} shrink-0`} />
+            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wide">{statusLabel}</span>
+          </div>
+
+          {presenceVisible && profile ? (
+            <>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-extrabold text-primary">{profile.initials}</span>
                 </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-on-surface truncate">{profile.occupation}</p>
+                  <p className="text-xs text-on-surface-variant truncate">{profile.interests}</p>
+                </div>
+              </div>
+              {profileTableMeta && (
+                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant bg-surface rounded-xl px-3 py-2">
+                  <MapPin size={12} className="text-primary shrink-0" />
+                  Sitting at table {profileTableMeta.label}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              {profileReady && profile
+                ? "Syncing your profile into the live roster…"
+                : "Create a profile to appear in the live roster. Only initials, occupation and interests are shown."}
+            </p>
+          )}
+
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              onClick={() => setEditorOpen(true)}
+              className="flex items-center justify-center gap-2 w-full rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-on-primary hover:bg-primary/90 transition-all"
+            >
+              {presenceVisible ? "Edit Profile" : profileReady ? "Retry Visibility" : "Go Visible"}
+              <ArrowRight size={13} />
+            </button>
+
+            {selectedTable && profileReady && profile?.tableId !== selectedTable && (
+              <button
+                onClick={() => { void setProfileTable(selectedTable); }}
+                className="flex items-center justify-center gap-2 w-full rounded-xl bg-surface-container-high px-4 py-2.5 text-xs font-bold text-on-surface hover:bg-surface-container-highest transition-all"
+              >
+                Sit at table {selectedTableMeta?.label ?? selectedTable}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Selected table info */}
+        {selectedTable && selectedTableMeta && (
+          <div className="rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-2">Selected Table</p>
+            <p className="text-2xl font-extrabold text-on-surface leading-none mb-1">
+              {selectedTableMeta.label}
+            </p>
+            {selectedTableMeta.seats > 0 && (
+              <p className="text-xs text-on-surface-variant">{selectedTableMeta.seats} seats · {selectedTableMeta.zoneName}</p>
+            )}
+          </div>
+        )}
+
+        {/* Quick actions */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href={`/v/${slug}/menu`}
+            className="flex flex-col items-start gap-3 rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10 hover:bg-surface-container transition-colors"
+          >
+            <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
+              <UtensilsCrossed size={16} className="text-primary" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-on-surface">View Menu</p>
+              <p className="text-[10px] text-on-surface-variant mt-0.5">Order food &amp; drinks</p>
+            </div>
+          </Link>
+
+          <Link
+            href={`/people?venue=${encodeURIComponent(slug)}`}
+            className="flex flex-col items-start gap-3 rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10 hover:bg-surface-container transition-colors"
+          >
+            <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Users size={16} className="text-primary" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-on-surface">See People</p>
+              <p className="text-[10px] text-on-surface-variant mt-0.5">Who's here now</p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Legend */}
+        <div className="rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60 mb-3">Map Legend</p>
+          <div className="space-y-2">
+            {[
+              { color: "bg-surface border-2 border-outline-variant", label: "Available table" },
+              { color: "bg-primary/20 border-2 border-primary", label: "Selected table" },
+              { color: "bg-surface-container-high border border-outline-variant/30", label: "Bar / counter" },
+              { color: "border-2 border-dashed border-primary/30 bg-primary/5", label: "Entrance" },
+            ].map(({ color, label }) => (
+              <div key={label} className="flex items-center gap-2.5">
+                <div className={`h-4 w-4 rounded ${color} shrink-0`} />
+                <span className="text-xs text-on-surface-variant">{label}</span>
               </div>
             ))}
           </div>
-        )}
-      </section>
-
-      {submittedOrder ? (
-        <section className="border-t border-outline-variant/30 bg-surface-container-low px-4 py-5">
-          <div className="rounded-[1.75rem] bg-surface p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-secondary-container text-on-secondary-container">
-                <CheckCircle2 size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold uppercase tracking-wide text-primary">
-                  Order Submitted
-                </p>
-                <h3 className="mt-1 text-xl font-bold text-on-surface">
-                  {submittedOrder.id}
-                </h3>
-                <p className="mt-2 text-sm text-on-surface-variant">
-                  {submittedOrder.fulfillmentType === "dine_in"
-                    ? `We queued this order for table ${submittedOrder.selectedTableId}.`
-                    : "We queued this order for pickup at the counter."}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-3 text-xs text-on-surface-variant">
-                  <span>{submittedOrder.items.length} line item(s)</span>
-                  <span>{formatCurrency(submittedOrder.total)} total</span>
-                  <span>{submittedOrder.paymentMethod.replace("_", " ")}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="sticky bottom-0 mt-auto border-t border-outline-variant/30 bg-surface/95 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                Cart Total
-              </p>
-              <p className="text-xl font-bold text-on-surface" data-testid="cart-total">
-                {formatCurrency(total)}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setCheckoutOpen((current) => !current)}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-60"
-              disabled={cartItems.length === 0}
-            >
-              {checkoutOpen ? "Hide Checkout" : "Open Checkout"}
-              <ArrowRight size={16} />
-            </button>
-          </div>
-
-          {checkoutOpen ? (
-            <div className="rounded-[1.75rem] bg-surface-container-low p-4" data-testid="checkout-panel">
-              <div className="grid gap-5 md:grid-cols-[1.1fr_0.9fr]">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-on-surface">Guest Details</h3>
-                    <p className="text-xs text-on-surface-variant">
-                      Fill out the order details and confirm payment below.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-2 text-sm font-medium text-on-surface">
-                      <span>Name</span>
-                      <input
-                        data-testid="checkout-name"
-                        value={checkout.customerName}
-                        onChange={(event) => handleCheckoutChange("customerName", event.target.value)}
-                        className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary"
-                        placeholder="Jordan Guest"
-                      />
-                    </label>
-                    <label className="space-y-2 text-sm font-medium text-on-surface">
-                      <span>Email</span>
-                      <input
-                        data-testid="checkout-email"
-                        value={checkout.customerEmail}
-                        onChange={(event) => handleCheckoutChange("customerEmail", event.target.value)}
-                        className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary"
-                        placeholder="guest@example.com"
-                        type="email"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-2 text-sm font-medium text-on-surface">
-                      <span>Fulfillment</span>
-                      <select
-                        data-testid="checkout-fulfillment"
-                        value={checkout.fulfillmentType}
-                        onChange={(event) =>
-                          handleCheckoutChange("fulfillmentType", event.target.value as FulfillmentType)
-                        }
-                        className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary"
-                      >
-                        <option value="pickup">Pickup</option>
-                        <option value="dine_in">Dine-in</option>
-                      </select>
-                    </label>
-                    <label className="space-y-2 text-sm font-medium text-on-surface">
-                      <span>Table</span>
-                      <select
-                        data-testid="checkout-table"
-                        value={selectedTable ?? ""}
-                        onChange={(event) => setSelectedTable(event.target.value || null)}
-                        disabled={checkout.fulfillmentType !== "dine_in"}
-                        className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary disabled:opacity-50"
-                      >
-                        <option value="">
-                          {checkout.fulfillmentType === "dine_in"
-                            ? "Select a table"
-                            : "Pickup order"}
-                        </option>
-                        {tableOptions.map((table) => (
-                          <option key={table.id} value={table.id}>
-                            {table.label}{table.seats ? ` - ${table.seats} seats` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <label className="space-y-2 text-sm font-medium text-on-surface">
-                    <span>Notes</span>
-                    <textarea
-                      data-testid="checkout-notes"
-                      value={checkout.notes}
-                      onChange={(event) => handleCheckoutChange("notes", event.target.value)}
-                      className="min-h-24 w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary"
-                      placeholder="Allergies, pacing notes, or pickup instructions"
-                    />
-                  </label>
-
-                  <div className="space-y-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-on-surface">Payment</h4>
-                      <p className="text-xs text-on-surface-variant">
-                        This is a demo checkout flow. Payment details are collected locally.
-                      </p>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {[
-                        { value: "card", label: "Card" },
-                        { value: "apple_pay", label: "Apple Pay" },
-                        { value: "cash", label: "Pay At Venue" },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          data-testid={`payment-${option.value}`}
-                          onClick={() => handleCheckoutChange("paymentMethod", option.value as PaymentMethod)}
-                          className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition-colors ${
-                            checkout.paymentMethod === option.value
-                              ? "border-primary bg-primary text-on-primary"
-                              : "border-outline-variant/40 bg-surface text-on-surface"
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    {checkout.paymentMethod === "card" ? (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-2 text-sm font-medium text-on-surface">
-                          <span>Cardholder</span>
-                          <input
-                            data-testid="cardholder-name"
-                            value={checkout.cardholderName}
-                            onChange={(event) =>
-                              handleCheckoutChange("cardholderName", event.target.value)
-                            }
-                            className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary"
-                            placeholder="Jordan Guest"
-                          />
-                        </label>
-                        <label className="space-y-2 text-sm font-medium text-on-surface">
-                          <span>Last 4 digits</span>
-                          <input
-                            data-testid="card-last-four"
-                            value={checkout.cardLastFour}
-                            onChange={(event) =>
-                              handleCheckoutChange(
-                                "cardLastFour",
-                                event.target.value.replace(/\D/g, "").slice(0, 4),
-                              )
-                            }
-                            className="w-full rounded-2xl border border-outline-variant/40 bg-surface px-4 py-3 text-sm outline-none transition focus:border-primary"
-                            inputMode="numeric"
-                            placeholder="4242"
-                          />
-                        </label>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="rounded-[1.5rem] bg-surface p-4 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <h3 className="text-lg font-bold text-on-surface">Your Order</h3>
-                    <button
-                      type="button"
-                      onClick={handleClearCart}
-                      className="text-xs font-semibold text-on-surface-variant transition-colors hover:text-on-surface"
-                    >
-                      Clear cart
-                    </button>
-                  </div>
-
-                  {cartItems.length === 0 ? (
-                    <p className="text-sm text-on-surface-variant">
-                      Add a few items from the menu to start checkout.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {cartItems.map((item) => (
-                        <div
-                          key={item.itemId}
-                          className="rounded-2xl bg-surface-container-low px-3 py-3"
-                          data-testid={`cart-item-${item.itemId}`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-on-surface">{item.name}</p>
-                              <p className="text-xs text-on-surface-variant">{item.category}</p>
-                            </div>
-                            <p className="text-sm font-bold text-primary">
-                              {formatCurrency(item.price * item.quantity)}
-                            </p>
-                          </div>
-                          <div className="mt-3 flex items-center justify-between">
-                            <p className="text-xs text-on-surface-variant">
-                              {item.description}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                data-testid={`cart-decrease-${item.itemId}`}
-                                onClick={() => updateCartQuantity(item.itemId, item.quantity - 1)}
-                                className="flex h-8 w-8 items-center justify-center rounded-full bg-surface text-on-surface"
-                                aria-label={`Decrease ${item.name}`}
-                              >
-                                <Minus size={14} />
-                              </button>
-                              <span className="w-5 text-center text-sm font-bold text-on-surface">
-                                {item.quantity}
-                              </span>
-                              <button
-                                type="button"
-                                data-testid={`cart-increase-${item.itemId}`}
-                                onClick={() => updateCartQuantity(item.itemId, item.quantity + 1)}
-                                className="flex h-8 w-8 items-center justify-center rounded-full bg-surface text-on-surface"
-                                aria-label={`Increase ${item.name}`}
-                              >
-                                <Plus size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="mt-5 space-y-2 border-t border-outline-variant/20 pt-4 text-sm">
-                    <div className="flex items-center justify-between text-on-surface-variant">
-                      <span>Subtotal</span>
-                      <span>{formatCurrency(subtotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-on-surface-variant">
-                      <span>Service fee</span>
-                      <span>{formatCurrency(serviceFee)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-base font-bold text-on-surface">
-                      <span>Total</span>
-                      <span data-testid="checkout-total">{formatCurrency(total)}</span>
-                    </div>
-                  </div>
-
-                  {checkoutError ? (
-                    <p
-                      className="mt-4 rounded-2xl bg-secondary-container px-4 py-3 text-sm text-on-secondary-container"
-                      data-testid="checkout-error"
-                    >
-                      {checkoutError}
-                    </p>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    data-testid="submit-order-button"
-                    onClick={handleSubmitOrder}
-                    disabled={cartItems.length === 0 || submittingOrder}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-60"
-                  >
-                    {submittingOrder ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Sending Order
-                      </>
-                    ) : (
-                      <>
-                        Submit Order
-                        <ArrowRight size={16} />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
-      </section>
+      </aside>
 
+      {/* Presence Profile Modal */}
       <PresenceProfileModal
         open={editorOpen}
         venueName={venue.name}
@@ -1051,25 +433,17 @@ export default function VenuePage() {
         error={saveError}
         onClose={() => setEditorOpen(false)}
         onChange={updateDraft}
-        onSave={() => {
-          void saveProfile();
-        }}
+        onSave={() => { void saveProfile(); }}
       />
     </div>
   );
 }
 
-const MIN_ZOOM = 0.15;
-const MAX_ZOOM = 4;
+/* ─── ReadOnlyCanvas ─────────────────────────────────── */
 
 function ReadOnlyCanvas({
-  outline,
-  elements,
-  floorWidth,
-  floorHeight,
-  selectedTable,
-  selectedTableLabel,
-  onSelectTable,
+  outline, elements, floorWidth, floorHeight,
+  selectedTable, selectedTableLabel, onSelectTable,
 }: {
   outline: FloorPoint[];
   elements: PlacedElement[];
@@ -1085,18 +459,13 @@ function ReadOnlyCanvas({
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
 
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
-  useEffect(() => {
-    panRef.current = pan;
-  }, [pan]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { panRef.current = pan; }, [pan]);
 
   const fitToView = useCallback(() => {
     if (!containerRef.current) return;
     const { clientWidth, clientHeight } = containerRef.current;
-    const padding = 60;
+    const padding = 48;
     const fit = Math.min(
       (clientWidth - padding) / floorWidth,
       (clientHeight - padding) / floorHeight,
@@ -1104,15 +473,10 @@ function ReadOnlyCanvas({
     );
     const z = Math.max(MIN_ZOOM, fit);
     setZoom(z);
-    setPan({
-      x: (clientWidth - floorWidth * z) / 2,
-      y: (clientHeight - floorHeight * z) / 2,
-    });
+    setPan({ x: (clientWidth - floorWidth * z) / 2, y: (clientHeight - floorHeight * z) / 2 });
   }, [floorWidth, floorHeight]);
 
-  useEffect(() => {
-    fitToView();
-  }, [fitToView]);
+  useEffect(() => { fitToView(); }, [fitToView]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1126,10 +490,7 @@ function ReadOnlyCanvas({
         const factor = e.deltaY > 0 ? 0.92 : 1.08;
         const oldZ = zoomRef.current;
         const newZ = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZ * factor));
-        setPan((p) => ({
-          x: mx - (mx - p.x) * (newZ / oldZ),
-          y: my - (my - p.y) * (newZ / oldZ),
-        }));
+        setPan((p) => ({ x: mx - (mx - p.x) * (newZ / oldZ), y: my - (my - p.y) * (newZ / oldZ) }));
         setZoom(newZ);
       } else {
         setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
@@ -1168,137 +529,103 @@ function ReadOnlyCanvas({
   const zoomPct = Math.round(zoom * 100);
 
   return (
-    <section className="min-h-[250px] max-h-[50vh] flex flex-col">
-      <div className="px-4 pt-5 pb-2 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-on-surface">Floor Plan</h2>
-          <p className="text-xs text-on-surface-variant">Tap a table for dine-in.</p>
-        </div>
-        <span className="rounded-full bg-secondary-container px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
-          {selectedTable ? `Table ${selectedTableLabel ?? selectedTable}` : "Pickup ready"}
-        </span>
-      </div>
+    <div
+      ref={containerRef}
+      className="w-full h-full rounded-2xl bg-surface-container-low relative overflow-hidden cursor-grab active:cursor-grabbing"
+      onMouseDown={handleMouseDown}
+    >
+      {/* Grid backdrop */}
       <div
-        ref={containerRef}
-        className="flex-1 min-h-0 bg-surface-container-low mx-4 rounded-2xl relative overflow-hidden"
-        onMouseDown={handleMouseDown}
+        className="absolute inset-0 opacity-10 pointer-events-none"
+        style={{
+          backgroundImage: "radial-gradient(#865300 1px, transparent 1px)",
+          backgroundSize: "24px 24px",
+          backgroundPosition: `${pan.x % 24}px ${pan.y % 24}px`,
+        }}
+      />
+
+      {/* Floor content */}
+      <div
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: "0 0",
+          width: floorWidth,
+          height: floorHeight,
+          position: "absolute",
+          top: 0, left: 0,
+        }}
       >
-        <div
-          className="absolute inset-0 opacity-10 pointer-events-none"
-          style={{
-            backgroundImage: "radial-gradient(#865300 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-            backgroundPosition: `${pan.x % 24}px ${pan.y % 24}px`,
-          }}
-        />
-
-        <div
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
-            width: floorWidth,
-            height: floorHeight,
-            position: "absolute",
-            top: 0,
-            left: 0,
-          }}
-        >
-          <div className="relative select-none" style={{ width: floorWidth, height: floorHeight }}>
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              overflow="visible"
-              className="absolute inset-0 w-full h-full"
-            >
-              <defs>
-                <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
-                  <feDropShadow dx="0" dy="0.5" stdDeviation="1.5" floodColor="#514437" floodOpacity="0.15" />
-                </filter>
-                <pattern id="dots" width="5" height="5" patternUnits="userSpaceOnUse">
-                  <circle cx="2.5" cy="2.5" r="0.3" fill="#865300" opacity="0.12" />
-                </pattern>
-                <clipPath id="floor">
-                  <path d={outlineToPath(outline)} />
-                </clipPath>
-              </defs>
-              <path
-                d={outlineToPath(outline)}
-                fill="#f7f3ed"
-                stroke="#514437"
-                strokeWidth="0.5"
-                strokeOpacity="0.3"
-                filter="url(#shadow)"
-              />
-              <rect width="100" height="100" fill="url(#dots)" clipPath="url(#floor)" />
-            </svg>
-
-            {elements.map((el) => (
-              <FloorElement
-                key={el.renderKey}
-                element={el}
-                selected={selectedTable === el.id}
-                onTap={() => onSelectTable(selectedTable === el.id ? null : el.id)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="absolute bottom-3 right-3 bg-surface/80 backdrop-blur-md p-1 rounded-xl shadow-sm flex items-center gap-1 z-10 border border-outline-variant/10">
-          <button
-            onClick={() => {
-              const newZ = Math.max(MIN_ZOOM, zoom * 0.85);
-              if (!containerRef.current) return;
-              const { clientWidth, clientHeight } = containerRef.current;
-              const cx = clientWidth / 2;
-              const cy = clientHeight / 2;
-              setPan((p) => ({
-                x: cx - (cx - p.x) * (newZ / zoom),
-                y: cy - (cy - p.y) * (newZ / zoom),
-              }));
-              setZoom(newZ);
-            }}
-            className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
-          >
-            <Minus size={14} />
-          </button>
-          <span className="text-[10px] font-bold text-on-surface px-1.5 min-w-[2.5rem] text-center">
-            {zoomPct}%
-          </span>
-          <button
-            onClick={() => {
-              const newZ = Math.min(MAX_ZOOM, zoom * 1.15);
-              if (!containerRef.current) return;
-              const { clientWidth, clientHeight } = containerRef.current;
-              const cx = clientWidth / 2;
-              const cy = clientHeight / 2;
-              setPan((p) => ({
-                x: cx - (cx - p.x) * (newZ / zoom),
-                y: cy - (cy - p.y) * (newZ / zoom),
-              }));
-              setZoom(newZ);
-            }}
-            className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
-          >
-            <Plus size={14} />
-          </button>
-          <div className="w-px h-4 bg-outline-variant/30 mx-0.5" />
-          <button
-            onClick={fitToView}
-            className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
-          >
-            <Maximize size={14} />
-          </button>
+        <div className="relative select-none" style={{ width: floorWidth, height: floorHeight }}>
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" overflow="visible" className="absolute inset-0 w-full h-full">
+            <defs>
+              <filter id="floor-shadow" x="-5%" y="-5%" width="110%" height="110%">
+                <feDropShadow dx="0" dy="0.5" stdDeviation="1.5" floodColor="#514437" floodOpacity="0.15" />
+              </filter>
+              <pattern id="floor-dots" width="5" height="5" patternUnits="userSpaceOnUse">
+                <circle cx="2.5" cy="2.5" r="0.3" fill="#865300" opacity="0.12" />
+              </pattern>
+              <clipPath id="floor-clip">
+                <path d={outlineToPath(outline)} />
+              </clipPath>
+            </defs>
+            <path d={outlineToPath(outline)} fill="#f7f3ed" stroke="#514437" strokeWidth="0.5" strokeOpacity="0.3" filter="url(#floor-shadow)" />
+            <rect width="100" height="100" fill="url(#floor-dots)" clipPath="url(#floor-clip)" />
+          </svg>
+          {elements.map((el) => (
+            <FloorElement
+              key={el.renderKey}
+              element={el}
+              selected={selectedTable === el.id}
+              onTap={() => onSelectTable(selectedTable === el.id ? null : el.id)}
+            />
+          ))}
         </div>
       </div>
-    </section>
+
+      {/* Zoom controls */}
+      <div className="absolute bottom-3 right-3 bg-surface/90 backdrop-blur-sm p-1 rounded-xl shadow-sm flex items-center gap-1 z-10 border border-outline-variant/10">
+        {[
+          {
+            icon: Minus, label: "Zoom out",
+            onClick: () => {
+              if (!containerRef.current) return;
+              const newZ = Math.max(MIN_ZOOM, zoom * 0.85);
+              const { clientWidth: cw, clientHeight: ch } = containerRef.current;
+              setPan((p) => ({ x: cw / 2 - (cw / 2 - p.x) * (newZ / zoom), y: ch / 2 - (ch / 2 - p.y) * (newZ / zoom) }));
+              setZoom(newZ);
+            },
+          },
+        ].map(({ icon: Icon, label, onClick }) => (
+          <button key={label} onClick={onClick} aria-label={label} className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors">
+            <Icon size={13} />
+          </button>
+        ))}
+        <span className="text-[10px] font-bold text-on-surface px-1 min-w-[2.5rem] text-center">{zoomPct}%</span>
+        <button
+          onClick={() => {
+            if (!containerRef.current) return;
+            const newZ = Math.min(MAX_ZOOM, zoom * 1.15);
+            const { clientWidth: cw, clientHeight: ch } = containerRef.current;
+            setPan((p) => ({ x: cw / 2 - (cw / 2 - p.x) * (newZ / zoom), y: ch / 2 - (ch / 2 - p.y) * (newZ / zoom) }));
+            setZoom(newZ);
+          }}
+          aria-label="Zoom in"
+          className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
+        >
+          <Plus size={13} />
+        </button>
+        <div className="w-px h-4 bg-outline-variant/30 mx-0.5" />
+        <button onClick={fitToView} aria-label="Fit to view" className="w-7 h-7 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors">
+          <Maximize size={13} />
+        </button>
+      </div>
+    </div>
   );
 }
 
-function FloorElement({
-  element,
-  selected,
-  onTap,
-}: {
+/* ─── FloorElement ───────────────────────────────────── */
+
+function FloorElement({ element, selected, onTap }: {
   element: PlacedElement;
   selected: boolean;
   onTap: () => void;
@@ -1309,86 +636,53 @@ function FloorElement({
     transform: `translate(-50%, -50%) rotate(${element.rotation}deg)`,
     position: "absolute",
   };
-
-  const ring = selected ? "ring-4 ring-primary/20 border-primary animate-pulse" : "";
+  const ring = selected ? "ring-4 ring-primary/30 border-primary animate-pulse" : "";
 
   switch (element.type) {
     case "round":
       return (
-        <div
-          className={`absolute w-16 h-16 rounded-full border-2 border-outline-variant flex items-center justify-center ${ring}`}
-          style={style}
-          onClick={onTap}
-        >
+        <div className={`absolute w-16 h-16 rounded-full border-2 border-outline-variant flex items-center justify-center cursor-pointer hover:border-primary/60 transition-colors ${ring}`} style={style} onClick={onTap}>
           <div className="w-8 h-8 rounded-full bg-surface-container-highest" />
           {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "square":
       return (
-        <div
-          className={`absolute w-16 h-16 rounded-lg border-2 border-outline-variant flex items-center justify-center ${ring}`}
-          style={style}
-          onClick={onTap}
-        >
+        <div className={`absolute w-16 h-16 rounded-lg border-2 border-outline-variant flex items-center justify-center cursor-pointer hover:border-primary/60 transition-colors ${ring}`} style={style} onClick={onTap}>
           <div className="w-8 h-6 rounded bg-surface-container-highest" />
           {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "long":
       return (
-        <div
-          className={`absolute w-24 h-16 border-2 border-outline-variant rounded-lg flex items-center justify-center ${ring}`}
-          style={style}
-          onClick={onTap}
-        >
+        <div className={`absolute w-24 h-16 border-2 border-outline-variant rounded-lg flex items-center justify-center cursor-pointer hover:border-primary/60 transition-colors ${ring}`} style={style} onClick={onTap}>
           <div className="w-16 h-8 bg-surface-container-highest rounded-sm" />
           {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "booth":
       return (
-        <div
-          className={`absolute w-14 h-14 border-2 border-outline-variant rounded-[10px] rounded-tl-[24px] flex items-center justify-center ${ring}`}
-          style={style}
-          onClick={onTap}
-        >
+        <div className={`absolute w-14 h-14 border-2 border-outline-variant rounded-[10px] rounded-tl-[24px] flex items-center justify-center cursor-pointer hover:border-primary/60 transition-colors ${ring}`} style={style} onClick={onTap}>
           <div className="w-8 h-8 rounded-[6px] rounded-tl-[16px] bg-surface-container-highest" />
           {selected && <TableLabel label={element.label ?? element.id} seats={element.seats} />}
         </div>
       );
     case "bar": {
-      const barW = element.w ?? 256;
-      const barH = element.h ?? 96;
+      const bW = element.w ?? 256, bH = element.h ?? 96;
       return (
-        <div
-          className={`absolute bg-surface-container-high rounded-xl flex items-center justify-center border shadow-sm border-outline-variant/30 ${ring}`}
-          style={{ ...style, width: barW, height: barH }}
-        >
+        <div className={`absolute bg-surface-container-high rounded-xl flex items-center justify-center border shadow-sm border-outline-variant/30 ${ring}`} style={{ ...style, width: bW, height: bH }}>
           <span className="text-sm font-semibold text-on-surface-variant">{element.label || "Bar"}</span>
         </div>
       );
     }
     case "entrance":
       return (
-        <div
-          className="absolute w-24 h-8 flex items-center justify-center border-2 border-dashed border-primary/30 bg-primary/5 rounded-md"
-          style={style}
-        >
-          <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
-            {element.label || "Entrance"}
-          </span>
+        <div className="absolute w-24 h-8 flex items-center justify-center border-2 border-dashed border-primary/30 bg-primary/5 rounded-md" style={style}>
+          <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">{element.label || "Entrance"}</span>
         </div>
       );
-    case "wall": {
-      const wallW = element.w ?? 96;
-      return (
-        <div
-          className="absolute h-2 bg-on-surface-variant/40 rounded-full"
-          style={{ ...style, width: wallW }}
-        />
-      );
-    }
+    case "wall":
+      return <div className="absolute h-2 bg-on-surface-variant/40 rounded-full" style={{ ...style, width: element.w ?? 96 }} />;
     default:
       return null;
   }
@@ -1396,10 +690,8 @@ function FloorElement({
 
 function TableLabel({ label, seats }: { label: string; seats?: number }) {
   return (
-    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface px-2 py-1 rounded-md text-[10px] font-bold whitespace-nowrap z-10">
-      {label}{seats ? ` - ${seats} seats` : ""}
+    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-on-surface text-surface px-2 py-1 rounded-md text-[10px] font-bold whitespace-nowrap z-10 shadow-sm">
+      {label}{seats ? ` · ${seats}` : ""}
     </div>
   );
 }
-
-

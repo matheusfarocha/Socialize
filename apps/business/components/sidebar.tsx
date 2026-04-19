@@ -6,22 +6,20 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard,
+  Receipt,
   BarChart3,
   Armchair,
   UtensilsCrossed,
-  Users,
-  Package,
   Settings,
   LogOut,
 } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
+  { label: "Orders", href: "/orders", icon: Receipt },
   { label: "Insights", href: "/insights", icon: BarChart3 },
   { label: "Floor Plan", href: "/floor-plan", icon: Armchair },
   { label: "Menu", href: "/menu", icon: UtensilsCrossed },
-  { label: "Staff", href: "/staff", icon: Users },
-  { label: "Inventory", href: "/inventory", icon: Package },
 ];
 
 export function Sidebar() {
