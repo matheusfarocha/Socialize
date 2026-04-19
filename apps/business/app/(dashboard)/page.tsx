@@ -9,12 +9,17 @@ import { BarChart } from "@/components/ui/bar-chart";
 import { RevenueCard } from "@/components/dashboard/revenue-card";
 import { TopSellers } from "@/components/dashboard/top-sellers";
 import { QrCta } from "@/components/dashboard/qr-cta";
+import { ScanCountCard } from "@/components/dashboard/scan-count-card";
 import {
   buildOrderDashboardMetrics,
   fetchOwnedVenueOrders,
   formatCurrency,
+  type DashboardWindow,
+  type MenuItemSummary,
   type OrderRecord,
 } from "@/lib/order-management";
+
+const filters: DashboardWindow[] = ["Today", "Week", "Month", "All Time"];
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -22,7 +27,9 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [venue, setVenue] = useState<{ id: string; name: string; slug: string } | null>(null);
   const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItemSummary[]>([]);
   const [tableCount, setTableCount] = useState(0);
+  const [activeFilter, setActiveFilter] = useState<DashboardWindow>("Today");
 
   useEffect(() => {
     let active = true;
@@ -37,6 +44,7 @@ export default function DashboardPage() {
 
         setVenue(snapshot.venue);
         setOrders(snapshot.orders);
+        setMenuItems(snapshot.menuItems);
         setTableCount(snapshot.tableCount);
         setError("");
       } catch (loadError) {
@@ -61,8 +69,8 @@ export default function DashboardPage() {
   }, []);
 
   const metrics = useMemo(
-    () => buildOrderDashboardMetrics(orders, tableCount),
-    [orders, tableCount],
+    () => buildOrderDashboardMetrics(orders, tableCount, activeFilter, menuItems),
+    [orders, tableCount, activeFilter, menuItems],
   );
   const todayLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
@@ -73,7 +81,7 @@ export default function DashboardPage() {
   return (
     <>
       <TopBar />
-      <div className="flex-1 mt-[72px] flex flex-col overflow-hidden px-8 xl:px-16 py-6">
+      <div className="flex-1 mt-[72px] flex flex-col overflow-y-auto px-8 xl:px-16 py-6">
         <div className="flex flex-wrap justify-between items-end gap-4 mb-5 shrink-0">
           <div>
             <h2 className="text-2xl font-headline font-bold text-on-surface tracking-tight mb-0.5">
@@ -83,7 +91,23 @@ export default function DashboardPage() {
               {todayLabel}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-2">
+              {filters.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setActiveFilter(f)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    f === activeFilter
+                      ? "bg-surface-container-highest text-on-surface"
+                      : "bg-surface text-on-surface-variant hover:bg-surface-container-low"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
             <Link
               href="/orders"
               className="px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-semibold hover:bg-primary/90 transition-colors"
@@ -98,6 +122,7 @@ export default function DashboardPage() {
                   .then((snapshot) => {
                     setVenue(snapshot.venue);
                     setOrders(snapshot.orders);
+                    setMenuItems(snapshot.menuItems);
                     setTableCount(snapshot.tableCount);
                     setError("");
                   })
@@ -142,8 +167,8 @@ export default function DashboardPage() {
               />
 
               <MetricCard
-                label="Active Orders"
-                value={metrics.activeOrders}
+                label={`Orders (${activeFilter})`}
+                value={metrics.totalOrders}
                 icon={Receipt}
                 footer={
                   <div className="mt-3 pt-3 border-t border-outline-variant/20 flex justify-between text-sm">
@@ -176,17 +201,19 @@ export default function DashboardPage() {
                   </>
                 }
               />
+
+              <ScanCountCard venueSlug={venue?.slug} activeWindow={activeFilter} />
             </div>
 
-            <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5 flex-1 min-h-0">
+            <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
               <BarChart
                 title="Revenue Trend"
-                subtitle="Last 7 days vs previous week"
+                subtitle={metrics.revenueTrendSubtitle}
                 data={metrics.revenueTrend}
                 yLabels={metrics.revenueYLabels}
               />
 
-              <div className="flex flex-col gap-5 min-h-0">
+              <div className="flex flex-col gap-5">
                 <TopSellers items={metrics.topSellers} />
                 <QrCta
                   venueSlug={venue?.slug}

@@ -1,12 +1,13 @@
 import { TopBar } from "@/components/top-bar";
 import { Droplets, Leaf, Package } from "lucide-react";
 import { insights } from "@/lib/mock-data";
+import { PerTableActivity } from "@/components/insights/per-table-activity";
 
 export default function InsightsPage() {
   return (
     <>
       <TopBar />
-      <div className="flex-1 pt-24 pb-12 px-4 md:px-12 max-w-5xl mx-auto w-full">
+      <div className="flex-1 pt-24 pb-12 px-4 md:px-12 max-w-5xl mx-auto w-full overflow-y-auto">
         <div className="mb-12 max-w-3xl">
           <h1 className="font-headline text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight mb-4 leading-tight">
             Here&apos;s what we&apos;ve brewed up for you today.
@@ -18,6 +19,8 @@ export default function InsightsPage() {
         </div>
 
         <div className="space-y-10">
+          <PerTableActivity />
+
           {insights.map((insight) => {
             const TagIcon = insight.tagIcon;
             return (
