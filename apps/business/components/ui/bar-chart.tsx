@@ -19,7 +19,7 @@ export function BarChart({
   data,
   yLabels = ["$1k", "$750", "$500", "$250", "$0"],
 }: BarChartProps) {
-  const maxValue = Math.max(1, ...data.flatMap((point) => [point.current, point.previous]));
+  const maxValue = Math.max(1, ...data.map((point) => point.current));
 
   return (
     <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-6 flex flex-col min-h-0">
@@ -40,13 +40,12 @@ export function BarChart({
             <span key={i}>{label}</span>
           ))}
         </div>
-        <div className="w-full flex justify-between items-end pl-12 h-full gap-2">
+        <div className="w-full flex items-end pl-12 h-full gap-2 justify-around">
           {data.map((d) => (
-            <div key={d.day} className="w-full relative group h-full">
-              <div
-                className="absolute bottom-0 w-full bg-primary-container/45 rounded-t-md"
-                style={{ height: `${Math.max((d.previous / maxValue) * 100, 0)}%` }}
-              />
+            <div
+              key={d.day}
+              className="relative group h-full flex-1 max-w-[72px]"
+            >
               <div
                 className="absolute bottom-0 w-full bg-primary rounded-t-md transition-all"
                 style={{ height: `${Math.max((d.current / maxValue) * 100, 0)}%` }}
@@ -55,9 +54,9 @@ export function BarChart({
           ))}
         </div>
       </div>
-      <div className="flex justify-between pl-12 pt-4 text-xs text-on-surface-variant w-full">
+      <div className="flex items-end pl-12 pt-4 gap-2 justify-around text-xs text-on-surface-variant w-full">
         {data.map((d) => (
-          <span key={d.day} className="text-center w-full">
+          <span key={d.day} className="text-center flex-1 max-w-[72px]">
             {d.day}
           </span>
         ))}

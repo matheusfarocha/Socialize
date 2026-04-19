@@ -37,6 +37,7 @@ import {
   type VenueSummary,
 } from "@/lib/presence";
 import { createPublicSupabaseClient } from "@/lib/supabase";
+import { endSession, logScan, startSession } from "@/lib/tracking";
 import { useVenuePresence } from "@/lib/use-venue-presence";
 
 /* ─── Types ─────────────────────────────────────────── */
@@ -139,6 +140,7 @@ export default function VenueFloorPage() {
   const [tablePresenceAvailable, setTablePresenceAvailable] = useState(true);
   const [tablePresenceError, setTablePresenceError] = useState("");
   const refreshTimerRef = useRef<number | null>(null);
+  const sessionRef = useRef<{ id: string; startedAt: Date; tableId: string | null } | null>(null);
 
   /* Presence */
   const presenceVenue: VenueSummary | null = useMemo(
@@ -244,10 +246,45 @@ export default function VenueFloorPage() {
       }
 
       setVenue({ id: venueRow.id, slug: venueRow.slug, name: venueRow.name, branchName: venueRow.branch_name ?? "Main Floor", zones });
+      logScan(venueRow.id).catch(() => {});
       setLoading(false);
     }
     load().catch(() => setLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    if (!venue?.id) return;
+    if (!selectedTable) return;
+    if (sessionRef.current?.tableId === selectedTable) return;
+
+    const prev = sessionRef.current;
+    if (prev) {
+      endSession(prev.id, { startedAt: prev.startedAt });
+    }
+
+    let cancelled = false;
+    startSession(venue.id, selectedTable).then((rowId) => {
+      if (cancelled || !rowId) return;
+      sessionRef.current = { id: rowId, startedAt: new Date(), tableId: selectedTable };
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [venue?.id, selectedTable]);
+
+  useEffect(() => {
+    function finalize() {
+      const active = sessionRef.current;
+      if (!active) return;
+      endSession(active.id, { startedAt: active.startedAt });
+      sessionRef.current = null;
+    }
+    window.addEventListener("beforeunload", finalize);
+    return () => {
+      window.removeEventListener("beforeunload", finalize);
+      finalize();
+    };
+  }, []);
 
   useEffect(() => {
     if (!venue) return;

@@ -8,7 +8,7 @@ interface RevenueCardProps {
 
 export function RevenueCard({ amount, miniBarHeights, comparisonLabel }: RevenueCardProps) {
   return (
-    <div className="col-span-1 md:col-span-2 bg-surface-container-lowest rounded-xl p-6 flex flex-col justify-between relative overflow-hidden group">
+    <div className="col-span-1 bg-surface-container-lowest rounded-xl p-6 flex flex-col justify-between relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
         <TrendingUp size={80} className="text-primary" />
       </div>
