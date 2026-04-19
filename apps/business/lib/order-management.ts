@@ -573,8 +573,7 @@ export function buildOrderDashboardMetrics(
     string,
     { quantity: number; revenue: number; menuItemId: string | null }
   >();
-  for (const order of orders) {
-    if (order.status === "cancelled") continue;
+  for (const order of windowedNonCancelled) {
     for (const item of order.items) {
       const current = topSellerMap.get(item.name) ?? {
         quantity: 0,
