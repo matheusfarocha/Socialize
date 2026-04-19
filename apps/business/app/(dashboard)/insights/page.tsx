@@ -1,103 +1,169 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Loader2, RefreshCw, Sparkles, TrendingUp, TriangleAlert } from "lucide-react";
 import { TopBar } from "@/components/top-bar";
-import { Droplets, Leaf, Package } from "lucide-react";
-import { insights } from "@/lib/mock-data";
-import { PerTableActivity } from "@/components/insights/per-table-activity";
+import { supabase } from "@/lib/supabase";
+
+interface InsightCard {
+  tag: string;
+  title: string;
+  description: string;
+  cta: string;
+  severity: "info" | "warning" | "opportunity";
+}
+
+interface InsightsResponse {
+  cards: InsightCard[];
+  model: string;
+  windowFallback: boolean;
+  fallbackReason: string | null;
+  signalCount: number;
+  cached: boolean;
+}
+
+function severityIcon(severity: InsightCard["severity"]) {
+  if (severity === "warning") return TriangleAlert;
+  if (severity === "opportunity") return TrendingUp;
+  return Sparkles;
+}
+
+function severityStyles(severity: InsightCard["severity"]) {
+  if (severity === "warning") {
+    return "bg-error-container/40 text-on-error-container";
+  }
+  if (severity === "opportunity") {
+    return "bg-primary-container/50 text-on-primary-container";
+  }
+  return "bg-secondary-container/50 text-on-secondary-container";
+}
 
 export default function InsightsPage() {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [data, setData] = useState<InsightsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load(force = false) {
+    if (force) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Sign in to see insights.");
+      }
+      const res = await fetch(`/api/insights${force ? "?refresh=1" : ""}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `Request failed (${res.status}).`);
+      }
+      const json = (await res.json()) as InsightsResponse;
+      setData(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load insights.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    load().catch(() => {});
+  }, []);
+
   return (
     <>
       <TopBar />
       <div className="flex-1 pt-24 pb-12 px-4 md:px-12 max-w-5xl mx-auto w-full overflow-y-auto">
-        <div className="mb-12 max-w-3xl">
-          <h1 className="font-headline text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight mb-4 leading-tight">
-            Here&apos;s what we&apos;ve brewed up for you today.
+        <div className="mb-10 max-w-3xl flex flex-col gap-4">
+          <div className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-primary-container/60 text-on-primary-container text-xs font-semibold tracking-wider uppercase">
+            <Sparkles size={12} /> AI Insights
+          </div>
+          <h1 className="font-headline text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight leading-tight">
+            Here&apos;s what the data is trying to tell you.
           </h1>
-          <p className="text-xl text-on-surface-variant leading-relaxed">
-            Based on recent patterns, we&apos;ve spotted some interesting trends
-            that might help you run things a bit smoother.
+          <p className="text-lg text-on-surface-variant leading-relaxed">
+            Generated fresh from your live orders, QR scans, and seating data.
+            {data?.windowFallback && " Showing all-time signals — seed more recent data for week-over-week comparisons."}
           </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => load(true)}
+              disabled={refreshing || loading}
+              className="px-4 py-2 rounded-full bg-surface-container-highest text-on-surface text-sm font-medium hover:opacity-80 transition-opacity inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Regenerate
+            </button>
+            {data && !data.cached && (
+              <span className="text-xs text-on-surface-variant">Just generated · {data.signalCount} signals · {data.model}</span>
+            )}
+            {data?.cached && (
+              <span className="text-xs text-on-surface-variant">Cached · regenerating costs a Gemini call</span>
+            )}
+            {data?.fallbackReason && (
+              <span className="text-xs text-error">Gemini unavailable — showing templated cards ({data.fallbackReason})</span>
+            )}
+          </div>
         </div>
 
-        <div className="space-y-10">
-          <PerTableActivity />
+        {loading && (
+          <div className="flex items-center gap-3 text-on-surface-variant py-16">
+            <Loader2 size={20} className="animate-spin" />
+            <span>Analyzing your venue...</span>
+          </div>
+        )}
 
-          {insights.map((insight) => {
-            const TagIcon = insight.tagIcon;
-            return (
-              <article
-                key={insight.title}
-                className="bg-surface-container-low rounded-[2rem] p-6 md:p-10 flex flex-col gap-8 items-center group hover:bg-surface-container-high transition-colors duration-300"
-              >
-                <div className="flex-1 space-y-4 max-w-3xl">
+        {error && !loading && (
+          <div className="p-6 rounded-2xl border border-error/30 bg-error-container/30 text-on-error-container">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && data && data.cards.length === 0 && (
+          <div className="p-6 rounded-2xl border border-outline-variant/30 bg-surface-container-low text-on-surface-variant">
+            No strong signals yet. Seed a bit more activity (scans, orders) and regenerate.
+          </div>
+        )}
+
+        {!loading && !error && data && data.cards.length > 0 && (
+          <div className="space-y-6">
+            {data.cards.map((card, idx) => {
+              const Icon = severityIcon(card.severity);
+              return (
+                <article
+                  key={`${card.tag}-${idx}`}
+                  className="bg-surface-container-low rounded-[2rem] p-6 md:p-10 space-y-4"
+                >
                   <div
-                    className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold tracking-wide ${insight.tagColor}`}
+                    className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${severityStyles(card.severity)}`}
                   >
-                    <TagIcon size={14} />
-                    {insight.tag}
+                    <Icon size={14} />
+                    {card.tag}
                   </div>
-                  <h2 className="font-headline text-3xl font-bold text-on-surface tracking-tight">
-                    {insight.title}
+                  <h2 className="font-headline text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+                    {card.title}
                   </h2>
-                  <p className="text-lg text-on-surface-variant leading-relaxed">
-                    {insight.description}
+                  <p className="text-base md:text-lg text-on-surface-variant leading-relaxed">
+                    {card.description}
                   </p>
-                  <button className="mt-4 bg-surface-container-highest text-on-surface px-6 py-3 rounded-full font-medium hover:bg-primary-fixed transition-colors">
-                    {insight.cta}
+                  <button className="mt-2 bg-surface-container-highest text-on-surface px-5 py-2.5 rounded-full text-sm font-medium hover:bg-primary-fixed transition-colors">
+                    {card.cta}
                   </button>
-                </div>
-              </article>
-            );
-          })}
-
-          {/* Inventory Insight with data cards */}
-          <article className="bg-surface-container-low rounded-[2rem] p-6 md:p-10 group hover:bg-surface-container-high transition-colors duration-300">
-            <div className="flex flex-col md:flex-row gap-8">
-              <div className="flex-1 space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-secondary-container/50 text-secondary rounded-full text-sm font-semibold tracking-wide">
-                  <Package size={14} />
-                  Inventory Check
-                </div>
-                <h2 className="font-headline text-3xl font-bold text-on-surface tracking-tight">
-                  Oat milk is outpacing Almond.
-                </h2>
-                <p className="text-lg text-on-surface-variant leading-relaxed">
-                  It finally happened. For the first time this quarter, Oat milk
-                  requests have surpassed Almond milk by a wide margin. We might
-                  run low before the weekend delivery.
-                </p>
-                <button className="mt-4 bg-secondary text-on-secondary px-6 py-3 rounded-full font-medium hover:opacity-90 transition-colors">
-                  Adjust Next Order
-                </button>
-              </div>
-              <div className="w-full md:w-5/12 grid grid-cols-2 gap-4">
-                <div className="bg-surface-container-highest rounded-2xl p-6 flex flex-col justify-center items-center text-center">
-                  <Droplets
-                    size={32}
-                    className="text-secondary mb-2"
-                  />
-                  <span className="text-2xl font-bold text-on-surface mb-1">
-                    68%
-                  </span>
-                  <span className="text-sm text-on-surface-variant">
-                    Oat Preference
-                  </span>
-                </div>
-                <div className="bg-surface-container-highest rounded-2xl p-6 flex flex-col justify-center items-center text-center opacity-70">
-                  <Leaf
-                    size={32}
-                    className="text-on-surface-variant mb-2"
-                  />
-                  <span className="text-2xl font-bold text-on-surface-variant mb-1">
-                    32%
-                  </span>
-                  <span className="text-sm text-on-surface-variant">
-                    Almond Preference
-                  </span>
-                </div>
-              </div>
-            </div>
-          </article>
-        </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );
