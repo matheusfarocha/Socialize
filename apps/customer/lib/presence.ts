@@ -154,6 +154,24 @@ export function findTableSummary(tables: TableSummary[], tableId: string | null 
   return tables.find((table) => table.id === tableId || table.label === tableId) ?? null;
 }
 
+export function normalizeTableId(tables: TableSummary[], tableId: string | null | undefined) {
+  return findTableSummary(tables, tableId)?.id ?? tableId ?? null;
+}
+
+export function normalizeActiveUsers(users: ActiveUserRecord[], tables: TableSummary[]) {
+  return users.map((user) => {
+    const normalizedTableId = normalizeTableId(tables, user.tableId);
+    if (normalizedTableId === user.tableId) {
+      return user;
+    }
+
+    return {
+      ...user,
+      tableId: normalizedTableId,
+    };
+  });
+}
+
 export function getTableDisplayLabel(tables: TableSummary[], tableId: string | null | undefined) {
   return findTableSummary(tables, tableId)?.label ?? tableId ?? null;
 }

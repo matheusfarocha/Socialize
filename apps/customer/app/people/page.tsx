@@ -26,6 +26,7 @@ import {
   PEOPLE_PAGE_SIZE,
   countTableOccupancy,
   isPresenceFresh,
+  normalizeActiveUsers,
   sortActiveUsers,
   type ActiveUserRecord,
   type PresenceProfile,
@@ -139,7 +140,7 @@ function PeoplePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const venueSlug = searchParams.get("venue") ?? "demo-venue";
+  const requestedVenueSlug = searchParams.get("venue");
   const requestedTable = searchParams.get("table");
   const forcedSessionId = searchParams.get("session");
 
@@ -213,10 +214,6 @@ function PeoplePageContent() {
   }, [profile]);
 
   useEffect(() => {
-    activeUsersRef.current = activeUsers;
-  }, [activeUsers]);
-
-  useEffect(() => {
     chatBusyRef.current = chatOpen && chatStatus !== "idle" && chatStatus !== "error";
   }, [chatOpen, chatStatus]);
 
@@ -227,11 +224,16 @@ function PeoplePageContent() {
       setPeopleLoading(true);
       setPageError("");
 
-      const { data: venueRow, error: venueError } = await supabase
+      const venueRequest = supabase
         .from("venues")
-        .select("id, slug, name, branch_name")
-        .eq("slug", venueSlug)
-        .single();
+        .select("id, slug, name, branch_name");
+
+      const venueQuery = requestedVenueSlug
+        ? venueRequest.eq("slug", requestedVenueSlug)
+        : venueRequest.order("name", { ascending: true }).limit(1);
+
+      const { data: venueRows, error: venueError } = await venueQuery;
+      const venueRow = venueRows?.[0];
 
       if (venueError || !venueRow) {
         setVenue(null);
@@ -239,6 +241,10 @@ function PeoplePageContent() {
         setLoadingVenue(false);
         setPageError("We couldn't find that cafe.");
         return;
+      }
+
+      if (!requestedVenueSlug && venueRow.slug) {
+        router.replace(`/people?venue=${encodeURIComponent(venueRow.slug)}`);
       }
 
       const { data: zoneRows, error: zoneError } = await supabase
@@ -294,7 +300,7 @@ function PeoplePageContent() {
       setLoadingVenue(false);
       setPageError("We couldn't load the live cafe roster.");
     });
-  }, [getSupabase, venueSlug]);
+  }, [getSupabase, requestedVenueSlug, router]);
 
   const refreshUsers = useCallback(
     async (force = false) => {
@@ -737,10 +743,14 @@ function PeoplePageContent() {
     };
   }, [tearDownRoom]);
 
-  const tableOccupancy = useMemo(() => countTableOccupancy(activeUsers), [activeUsers]);
+  const normalizedUsers = useMemo(
+    () => normalizeActiveUsers(activeUsers, tables),
+    [activeUsers, tables],
+  );
+  const tableOccupancy = useMemo(() => countTableOccupancy(normalizedUsers), [normalizedUsers]);
   const otherUsers = useMemo(
-    () => activeUsers.filter((user) => user.sessionId !== profile?.sessionId),
-    [activeUsers, profile?.sessionId],
+    () => normalizedUsers.filter((user) => user.sessionId !== profile?.sessionId),
+    [normalizedUsers, profile?.sessionId],
   );
   const totalPages = Math.max(1, Math.ceil(otherUsers.length / PEOPLE_PAGE_SIZE));
   const currentPageIndex = Math.min(pageIndex, totalPages - 1);
@@ -749,18 +759,31 @@ function PeoplePageContent() {
     const start = currentPageIndex * PEOPLE_PAGE_SIZE;
     return otherUsers.slice(start, start + PEOPLE_PAGE_SIZE);
   }, [currentPageIndex, otherUsers]);
+  const selectedUserResolved = useMemo(() => {
+    if (!selectedUser) return null;
+    return normalizedUsers.find((user) => user.sessionId === selectedUser.sessionId) ?? null;
+  }, [normalizedUsers, selectedUser]);
+  const chatPeerResolved = useMemo(() => {
+    if (!chatPeer) return null;
+    return normalizedUsers.find((user) => user.sessionId === chatPeer.sessionId) ?? chatPeer;
+  }, [chatPeer, normalizedUsers]);
   const profileTable = useMemo(
     () => findTableSummary(tables, profile?.tableId ?? null),
     [profile?.tableId, tables],
   );
   const selectedUserTable = useMemo(
-    () => findTableSummary(tables, selectedUser?.tableId ?? null),
-    [selectedUser?.tableId, tables],
+    () => findTableSummary(tables, selectedUserResolved?.tableId ?? null),
+    [selectedUserResolved?.tableId, tables],
   );
   const chatPeerTable = useMemo(
-    () => findTableSummary(tables, chatPeer?.tableId ?? null),
-    [chatPeer?.tableId, tables],
+    () => findTableSummary(tables, chatPeerResolved?.tableId ?? null),
+    [chatPeerResolved?.tableId, tables],
   );
+  const selectedUserTableId = selectedUserTable?.id ?? selectedUserResolved?.tableId ?? null;
+
+  useEffect(() => {
+    activeUsersRef.current = normalizedUsers;
+  }, [normalizedUsers]);
 
   const startChat = useCallback(
     async (targetUser: ActiveUserRecord) => {
@@ -877,18 +900,18 @@ function PeoplePageContent() {
   }, [muted]);
 
   const handleJoinTable = useCallback(async () => {
-    if (!selectedUser?.tableId || !venue) return;
+    if (!selectedUserResolved?.tableId || !venue) return;
 
-    await setProfileTable(selectedUser.tableId);
-    router.push(`/v/${venue.slug}?table=${encodeURIComponent(selectedUser.tableId)}`);
-  }, [router, selectedUser, setProfileTable, venue]);
+    await setProfileTable(selectedUserResolved.tableId);
+    router.push(`/v/${venue.slug}?table=${encodeURIComponent(selectedUserResolved.tableId)}`);
+  }, [router, selectedUserResolved, setProfileTable, venue]);
 
   const venueHref = venue ? `/v/${encodeURIComponent(venue.slug)}` : "/";
   const joinTargetIsFull =
-    selectedUser?.tableId
+    selectedUserTableId
       ? Boolean(
           selectedUserTable?.seats &&
-            (tableOccupancy[selectedUser.tableId] ?? 0) >=
+            (tableOccupancy[selectedUserTableId] ?? 0) >=
               (selectedUserTable?.seats ?? 0),
         )
       : false;
@@ -1071,7 +1094,7 @@ function PeoplePageContent() {
               {visibleUsers.map((user) => {
                 const table = findTableSummary(tables, user.tableId);
                 const seats = table?.seats ?? 0;
-                const occupancy = user.tableId ? tableOccupancy[user.tableId] ?? 0 : 0;
+                const occupancy = table?.id ? tableOccupancy[table.id] ?? 0 : 0;
                 const tableFull = Boolean(user.tableId && seats > 0 && occupancy >= seats);
 
                 return (
@@ -1149,15 +1172,15 @@ function PeoplePageContent() {
         }}
       />
 
-      {selectedUser ? (
+      {selectedUserResolved ? (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-on-surface/35 px-4 py-6 backdrop-blur-sm md:items-center">
           <div className="w-full max-w-lg rounded-[2rem] bg-surface p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Guest Actions</p>
-                <h2 className="mt-1 text-2xl font-bold text-on-surface">{selectedUser.initials}</h2>
+                <h2 className="mt-1 text-2xl font-bold text-on-surface">{selectedUserResolved.initials}</h2>
                 <p className="mt-2 text-sm text-on-surface-variant">
-                  {selectedUser.occupation} - {selectedUser.interests}
+                  {selectedUserResolved.occupation} - {selectedUserResolved.interests}
                 </p>
               </div>
               <button
@@ -1173,7 +1196,7 @@ function PeoplePageContent() {
               <button
                 type="button"
                 onClick={() => {
-                  void startChat(selectedUser);
+                  void startChat(selectedUserResolved);
                 }}
                 className="flex items-center justify-between rounded-[1.4rem] bg-surface-container-low px-5 py-4 text-left transition-colors hover:bg-surface-container-high"
               >
@@ -1191,7 +1214,7 @@ function PeoplePageContent() {
                 onClick={() => {
                   void handleJoinTable();
                 }}
-                disabled={!selectedUser.tableId || joinTargetIsFull}
+                disabled={!selectedUserResolved.tableId || joinTargetIsFull}
                 className="flex items-center justify-between rounded-[1.4rem] bg-surface-container-low px-5 py-4 text-left transition-colors hover:bg-surface-container-high disabled:opacity-50"
               >
                 <div>
@@ -1199,8 +1222,8 @@ function PeoplePageContent() {
                     {joinTargetIsFull ? "Table full" : "Join table"}
                   </p>
                     <p className="mt-1 text-sm text-on-surface-variant">
-                      {selectedUser.tableId
-                      ? `Jump to table ${selectedUserTable?.label ?? selectedUser.tableId} on the current floor plan.`
+                      {selectedUserResolved.tableId
+                      ? `Jump to table ${selectedUserTable?.label ?? selectedUserResolved.tableId} on the current floor plan.`
                       : "This guest has not selected a table yet."}
                     </p>
                 </div>
@@ -1218,7 +1241,7 @@ function PeoplePageContent() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Live Cafe Chat</p>
                 <h2 className="mt-1 text-2xl font-bold text-on-surface">
-                  {chatPeer ? `${chatPeer.initials} - ${chatPeer.occupation}` : "Preparing room"}
+                  {chatPeerResolved ? `${chatPeerResolved.initials} - ${chatPeerResolved.occupation}` : "Preparing room"}
                 </h2>
                 <p className="mt-2 text-sm text-on-surface-variant">
                   {incomingInvite
@@ -1300,11 +1323,11 @@ function PeoplePageContent() {
                     </p>
                     <div className="mt-4 flex items-center justify-center">
                       <div className="flex h-24 w-24 items-center justify-center rounded-full bg-secondary-container text-3xl font-bold text-on-secondary-container">
-                        {chatPeer?.initials ?? "??"}
+                        {chatPeerResolved?.initials ?? "??"}
                       </div>
                     </div>
                     <p className="mt-4 text-base font-bold text-on-surface">
-                      {chatPeer?.tableId ? `Near table ${chatPeerTable?.label ?? chatPeer.tableId}` : "Walking the room"}
+                      {chatPeerResolved?.tableId ? `Near table ${chatPeerTable?.label ?? chatPeerResolved.tableId}` : "Walking the room"}
                     </p>
                     <p className="mt-2 text-sm text-on-surface-variant">
                       {hasLocalAudio ? "Microphone connected." : "Text-only fallback active."}
