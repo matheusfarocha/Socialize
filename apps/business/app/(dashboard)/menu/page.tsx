@@ -566,30 +566,6 @@ export default function MenuPage() {
                   const next = categories.find((category) => category.name === name);
                   if (next) setActiveCategoryId(next.id);
                 }}
-                trailing={
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleAddCategory}
-                      disabled={!venueId || savingCategory}
-                      data-testid="add-category-button"
-                      className="flex items-center gap-2 px-5 py-2.5 bg-surface-container-highest text-on-surface rounded-full hover:bg-surface-variant transition-colors font-headline font-medium text-sm whitespace-nowrap shrink-0 disabled:opacity-60"
-                    >
-                      <FolderPlus size={18} />
-                      Add Category
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddItem}
-                      disabled={!activeCategory}
-                      data-testid="add-item-button"
-                      className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-full hover:bg-primary/90 transition-colors font-headline font-medium text-sm whitespace-nowrap shrink-0 disabled:opacity-60"
-                    >
-                      <Plus size={18} />
-                      Add Item
-                    </button>
-                  </div>
-                }
               />
 
               {activeCategory ? (
@@ -653,6 +629,29 @@ export default function MenuPage() {
 
               <div className="rounded-2xl bg-surface-container-low px-4 py-3 text-xs text-on-surface-variant">
                 Category names: up to {MENU_CATEGORY_NAME_MAX_LENGTH} characters using letters, numbers, spaces, and basic menu punctuation.
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  disabled={!venueId || savingCategory}
+                  data-testid="add-category-button"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-surface-container-highest text-on-surface rounded-full hover:bg-surface-variant transition-colors font-headline font-medium text-sm whitespace-nowrap disabled:opacity-60"
+                >
+                  <FolderPlus size={18} />
+                  Add Category
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  disabled={!activeCategory}
+                  data-testid="add-item-button"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-full hover:bg-primary/90 transition-colors font-headline font-medium text-sm whitespace-nowrap disabled:opacity-60"
+                >
+                  <Plus size={18} />
+                  Add Item
+                </button>
               </div>
 
               {activeCategory && (

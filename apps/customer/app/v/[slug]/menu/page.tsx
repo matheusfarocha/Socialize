@@ -336,25 +336,27 @@ export default function MenuPage() {
 
         {/* Category pills — sticky */}
         <div className="shrink-0 px-4 lg:px-6 pt-4 pb-3 border-b border-outline-variant/10 bg-surface">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-            {venue.categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                  activeCategory === cat
-                    ? "bg-primary text-on-primary shadow-sm"
-                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide flex-1 min-w-0">
+              {venue.categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                    activeCategory === cat
+                      ? "bg-primary text-on-primary shadow-sm"
+                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
             <a
               href={AR_MENU_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-1 px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-secondary-container text-on-secondary-container shrink-0"
+              className="px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-secondary-container text-on-secondary-container shrink-0"
             >
               View in AR ↗
             </a>

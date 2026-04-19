@@ -220,6 +220,25 @@ export default function VenueFloorPage() {
   const activeZone = venue?.zones[activeZoneIndex] ?? null;
   const selectedTableMeta = useMemo(() => findTableSummary(presenceTables, selectedTable), [selectedTable, presenceTables]);
   const profileTableMeta = useMemo(() => findTableSummary(presenceTables, profile?.tableId ?? null), [profile?.tableId, presenceTables]);
+  const mockTablePeople = useMemo(() => {
+    const pool = [
+      { initials: "JR", occupation: "UX Designer" },
+      { initials: "AL", occupation: "Grad Student" },
+      { initials: "KW", occupation: "Freelance Writer" },
+      { initials: "DP", occupation: "Product Manager" },
+      { initials: "SN", occupation: "Photographer" },
+      { initials: "MT", occupation: "Software Engineer" },
+      { initials: "RB", occupation: "Music Producer" },
+      { initials: "EV", occupation: "Yoga Instructor" },
+    ];
+    if (!selectedTable || !selectedTableMeta?.seats) return [];
+    let hash = 0;
+    for (let i = 0; i < selectedTable.length; i++) hash = ((hash << 5) - hash + selectedTable.charCodeAt(i)) | 0;
+    const count = Math.abs(hash) % (selectedTableMeta.seats + 1);
+    const start = Math.abs(hash) % pool.length;
+    return Array.from({ length: count }, (_, i) => pool[(start + i) % pool.length]);
+  }, [selectedTable, selectedTableMeta?.seats]);
+  const mockOccupancy = mockTablePeople.length;
 
   /* Status dot */
   const statusColor = !presenceAvailable
@@ -370,7 +389,22 @@ export default function VenueFloorPage() {
               {selectedTableMeta.label}
             </p>
             {selectedTableMeta.seats > 0 && (
-              <p className="text-xs text-on-surface-variant">{selectedTableMeta.seats} seats · {selectedTableMeta.zoneName}</p>
+              <p className="text-xs text-on-surface-variant">{mockOccupancy}/{selectedTableMeta.seats} seated · {selectedTableMeta.zoneName}</p>
+            )}
+            {mockTablePeople.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-outline-variant/15 space-y-2">
+                {mockTablePeople.map((person) => (
+                  <div key={person.initials} className="flex items-center gap-2.5">
+                    <div className="h-7 w-7 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {person.initials}
+                    </div>
+                    <span className="text-xs text-on-surface font-medium">{person.occupation}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {mockOccupancy === 0 && (
+              <p className="mt-2 text-[11px] text-on-surface-variant/60 italic">No one seated yet</p>
             )}
           </div>
         )}
@@ -391,7 +425,7 @@ export default function VenueFloorPage() {
           </Link>
 
           <Link
-            href={`/people?venue=${encodeURIComponent(slug)}`}
+            href={`/v/${slug}/people`}
             className="flex flex-col items-start gap-3 rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10 hover:bg-surface-container transition-colors"
           >
             <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
