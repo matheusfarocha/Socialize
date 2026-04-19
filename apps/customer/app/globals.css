@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "mapbox-gl/dist/mapbox-gl.css";
+@import "../node_modules/mapbox-gl/dist/mapbox-gl.css";
 
 @theme inline {
   --color-primary: #865300;
