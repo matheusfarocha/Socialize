@@ -56,11 +56,10 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { href: `/v/${slug}`, label: "Floor Plan", shortLabel: "Floor", icon: LayoutGrid, exact: true },
     { href: `/v/${slug}/menu`, label: "Menu & Order", shortLabel: "Menu", icon: UtensilsCrossed, exact: false },
-    { href: `/people?venue=${encodeURIComponent(slug)}`, label: "People Here", shortLabel: "People", icon: Users, exact: false, external: true },
+    { href: `/v/${slug}/people`, label: "People Here", shortLabel: "People", icon: Users, exact: false },
   ];
 
-  function isActive(href: string, exact: boolean, external = false) {
-    if (external) return false;
+  function isActive(href: string, exact: boolean) {
     if (exact) return pathname === href;
     return pathname.startsWith(href);
   }
@@ -92,7 +91,7 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
             Navigate
           </p>
           {navItems.map((item) => {
-            const active = isActive(item.href, item.exact, item.external);
+            const active = isActive(item.href, item.exact);
             return (
               <Link
                 key={item.href}
@@ -146,23 +145,20 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* Mobile top header */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-primary text-on-primary shrink-0">
-          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className="h-8 w-8 rounded-xl bg-on-primary/20 flex items-center justify-center shrink-0">
-              <Coffee size={15} />
+        <header className="lg:hidden relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/85 text-on-primary shrink-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_60%)]" />
+          <div className="relative flex items-center gap-3 px-5 py-4">
+            <div className="h-10 w-10 rounded-2xl bg-on-primary/15 backdrop-blur-sm flex items-center justify-center shrink-0 ring-1 ring-on-primary/10">
+              <Coffee size={18} />
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold truncate leading-tight">{venueName || slug}</p>
-              <p className="text-[10px] text-on-primary/70">{branchName}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-[15px] font-bold truncate leading-tight tracking-tight">{venueName || slug}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-300 animate-pulse" />
+                <p className="text-[11px] text-on-primary/70 font-medium">{branchName}</p>
+              </div>
             </div>
           </div>
-          <Link
-            href={`/v/${slug}/menu`}
-            className="flex items-center gap-1.5 bg-on-primary/20 rounded-full px-3 py-1.5 text-[11px] font-bold shrink-0"
-          >
-            <ShoppingBag size={12} />
-            {cartCount > 0 ? `${cartCount} items` : "Menu"}
-          </Link>
         </header>
 
         {/* Page content — each child manages its own scroll */}
@@ -173,7 +169,7 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
         {/* Mobile bottom navigation */}
         <nav className="lg:hidden flex border-t border-outline-variant/20 bg-surface shrink-0">
           {navItems.map((item) => {
-            const active = isActive(item.href, item.exact, item.external);
+            const active = isActive(item.href, item.exact);
             return (
               <Link
                 key={item.href}

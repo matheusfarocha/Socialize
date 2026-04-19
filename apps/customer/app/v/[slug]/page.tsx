@@ -391,7 +391,7 @@ export default function VenueFloorPage() {
           </Link>
 
           <Link
-            href={`/people?venue=${encodeURIComponent(slug)}`}
+            href={`/v/${slug}/people`}
             className="flex flex-col items-start gap-3 rounded-2xl bg-surface-container-low p-4 ring-1 ring-outline-variant/10 hover:bg-surface-container transition-colors"
           >
             <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">

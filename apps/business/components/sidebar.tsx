@@ -98,11 +98,6 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-3 px-4 py-2">
-        <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-headline font-bold text-sm">
-          MP
-        </div>
-      </div>
     </nav>
   );
 }
