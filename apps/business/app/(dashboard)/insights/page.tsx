@@ -6,7 +6,7 @@ export default function InsightsPage() {
   return (
     <>
       <TopBar />
-      <div className="flex-1 pt-24 pb-12 px-4 md:px-12 max-w-5xl mx-auto w-full overflow-y-auto">
+      <div className="flex-1 pt-24 pb-12 px-4 md:px-12 max-w-5xl mx-auto w-full">
         <div className="mb-12 max-w-3xl">
           <h1 className="font-headline text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight mb-4 leading-tight">
             Here&apos;s what we&apos;ve brewed up for you today.

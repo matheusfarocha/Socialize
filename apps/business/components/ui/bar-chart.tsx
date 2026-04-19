@@ -1,10 +1,15 @@
 import { MoreHorizontal } from "lucide-react";
-import type { ChartDataPoint } from "@/lib/mock-data";
+
+export interface BarChartDataPoint {
+  day: string;
+  current: number;
+  previous: number;
+}
 
 interface BarChartProps {
   title: string;
   subtitle: string;
-  data: ChartDataPoint[];
+  data: BarChartDataPoint[];
   yLabels?: string[];
 }
 
@@ -14,6 +19,8 @@ export function BarChart({
   data,
   yLabels = ["$1k", "$750", "$500", "$250", "$0"],
 }: BarChartProps) {
+  const maxValue = Math.max(1, ...data.flatMap((point) => [point.current, point.previous]));
+
   return (
     <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-6 flex flex-col min-h-0">
       <div className="flex justify-between items-center mb-4 shrink-0">
@@ -35,18 +42,14 @@ export function BarChart({
         </div>
         <div className="w-full flex justify-between items-end pl-12 h-full gap-2">
           {data.map((d) => (
-            <div
-              key={d.day}
-              className="w-full relative group"
-              style={{ height: `${d.current}%` }}
-            >
+            <div key={d.day} className="w-full relative group h-full">
               <div
-                className="absolute bottom-0 w-full bg-primary-container/40 rounded-t-md"
-                style={{ height: "100%" }}
+                className="absolute bottom-0 w-full bg-primary-container/45 rounded-t-md"
+                style={{ height: `${Math.max((d.previous / maxValue) * 100, 0)}%` }}
               />
               <div
                 className="absolute bottom-0 w-full bg-primary rounded-t-md transition-all"
-                style={{ height: `${d.previous}%` }}
+                style={{ height: `${Math.max((d.current / maxValue) * 100, 0)}%` }}
               />
             </div>
           ))}

@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Coffee, MapPin, Clock, Loader2, Minus, Plus, Maximize, Layers } from "lucide-react";
+import { Coffee, MapPin, Clock, Loader2, Minus, Plus, Maximize } from "lucide-react";
 
 interface FloorPoint {
   x: number;
@@ -31,18 +31,12 @@ interface MenuItem {
   image?: string;
 }
 
-interface ZoneData {
-  id: string;
+interface VenueData {
   name: string;
   floorWidth: number;
   floorHeight: number;
   outline: FloorPoint[];
   elements: PlacedElement[];
-}
-
-interface VenueData {
-  name: string;
-  zones: ZoneData[];
   menuItems: MenuItem[];
 }
 
@@ -57,7 +51,6 @@ export default function VenuePage() {
   const [venue, setVenue] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [activeZoneIndex, setActiveZoneIndex] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -68,57 +61,50 @@ export default function VenuePage() {
         .single();
       if (!venueRow) { setLoading(false); return; }
 
-      const { data: zoneRows } = await supabase
+      const { data: zone } = await supabase
         .from("zones")
-        .select("id, name, floor_width, floor_height, floor_outline")
+        .select("id, floor_width, floor_height, floor_outline")
         .eq("venue_id", venueRow.id)
-        .order("sort_order");
+        .order("sort_order")
+        .limit(1)
+        .single();
 
-      const zones: ZoneData[] = [];
-      for (const zr of (zoneRows ?? [])) {
+      let elements: PlacedElement[] = [];
+      if (zone) {
         const { data: tables } = await supabase
           .from("tables")
           .select("identifier, seat_count, shape, pos_x, pos_y, rotation")
-          .eq("zone_id", zr.id);
+          .eq("zone_id", zone.id);
 
         const { data: structural } = await supabase
           .from("structural_elements")
           .select("element_type, label, pos_x, pos_y, rotation, size_w, size_h")
-          .eq("zone_id", zr.id);
+          .eq("zone_id", zone.id);
 
-        zones.push({
-          id: zr.id,
-          name: zr.name,
-          floorWidth: zr.floor_width ?? 800,
-          floorHeight: zr.floor_height ?? 600,
-          outline: (zr.floor_outline as FloorPoint[]) ?? [
-            { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
-          ],
-          elements: [
-            ...(tables ?? []).map((t) => ({
-              id: t.identifier,
-              kind: "table" as const,
-              type: t.shape,
-              x: t.pos_x,
-              y: t.pos_y,
-              rotation: t.rotation,
-              seats: t.seat_count,
-            })),
-            ...(structural ?? []).map((s, i) => ({
-              id: s.element_type === "bar" ? `BAR-${String(i + 1).padStart(2, "0")}` :
-                  s.element_type === "entrance" ? `ENT-${String(i + 1).padStart(2, "0")}` :
-                  `W-${String(i + 1).padStart(2, "0")}`,
-              kind: "structural" as const,
-              type: s.element_type,
-              x: s.pos_x,
-              y: s.pos_y,
-              rotation: s.rotation,
-              label: s.label || undefined,
-              w: s.size_w ?? undefined,
-              h: s.size_h ?? undefined,
-            })),
-          ],
-        });
+        elements = [
+          ...(tables ?? []).map((t) => ({
+            id: t.identifier,
+            kind: "table" as const,
+            type: t.shape,
+            x: t.pos_x,
+            y: t.pos_y,
+            rotation: t.rotation,
+            seats: t.seat_count,
+          })),
+          ...(structural ?? []).map((s, i) => ({
+            id: s.element_type === "bar" ? `BAR-${String(i + 1).padStart(2, "0")}` :
+                s.element_type === "entrance" ? `ENT-${String(i + 1).padStart(2, "0")}` :
+                `W-${String(i + 1).padStart(2, "0")}`,
+            kind: "structural" as const,
+            type: s.element_type,
+            x: s.pos_x,
+            y: s.pos_y,
+            rotation: s.rotation,
+            label: s.label || undefined,
+            w: s.size_w ?? undefined,
+            h: s.size_h ?? undefined,
+          })),
+        ];
       }
 
       const { data: menuRows } = await supabase
@@ -137,15 +123,18 @@ export default function VenuePage() {
 
       setVenue({
         name: venueRow.name,
-        zones,
+        floorWidth: zone?.floor_width ?? 800,
+        floorHeight: zone?.floor_height ?? 600,
+        outline: (zone?.floor_outline as FloorPoint[]) ?? [
+          { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
+        ],
+        elements,
         menuItems: mappedMenu,
       });
       setLoading(false);
     }
     load().catch(() => setLoading(false));
   }, [slug]);
-
-  const activeZone = venue?.zones[activeZoneIndex] ?? null;
 
   if (loading) {
     return (
@@ -189,35 +178,14 @@ export default function VenuePage() {
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
         {/* Floor Plan */}
         <div className="flex-1 min-h-0 lg:min-w-0 flex flex-col">
-          {venue.zones.length > 1 && (
-            <div className="shrink-0 px-4 pt-3 pb-1 flex items-center gap-2">
-              <Layers size={14} className="text-on-surface-variant" />
-              {venue.zones.map((zone, i) => (
-                <button
-                  key={zone.id}
-                  onClick={() => { setActiveZoneIndex(i); setSelectedTable(null); }}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                    i === activeZoneIndex
-                      ? "bg-primary text-on-primary"
-                      : "text-on-surface-variant hover:bg-surface-container-low"
-                  }`}
-                >
-                  {zone.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {activeZone && (
-            <ReadOnlyCanvas
-              key={activeZone.id}
-              outline={activeZone.outline}
-              elements={activeZone.elements}
-              floorWidth={activeZone.floorWidth}
-              floorHeight={activeZone.floorHeight}
-              selectedTable={selectedTable}
-              onSelectTable={setSelectedTable}
-            />
-          )}
+          <ReadOnlyCanvas
+            outline={venue.outline}
+            elements={venue.elements}
+            floorWidth={venue.floorWidth}
+            floorHeight={venue.floorHeight}
+            selectedTable={selectedTable}
+            onSelectTable={setSelectedTable}
+          />
         </div>
 
         {/* Menu */}

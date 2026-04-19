@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard,
+  Receipt,
   BarChart3,
   Armchair,
   UtensilsCrossed,
@@ -15,9 +16,10 @@ import {
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Menu", href: "/menu", icon: UtensilsCrossed },
-  { label: "Floor Plan", href: "/floor-plan", icon: Armchair },
+  { label: "Orders", href: "/orders", icon: Receipt },
   { label: "Insights", href: "/insights", icon: BarChart3 },
+  { label: "Floor Plan", href: "/floor-plan", icon: Armchair },
+  { label: "Menu", href: "/menu", icon: UtensilsCrossed },
 ];
 
 export function Sidebar() {
@@ -96,6 +98,11 @@ export function Sidebar() {
         )}
       </div>
 
+      <div className="mt-4 flex items-center gap-3 px-4 py-2">
+        <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-headline font-bold text-sm">
+          MP
+        </div>
+      </div>
     </nav>
   );
 }

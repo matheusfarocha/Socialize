@@ -2,14 +2,13 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { notFound, useParams } from "next/navigation";
+import { notFound, useParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import {
   ArrowRight,
   CheckCircle2,
   Clock,
   Coffee,
-  Layers,
   Loader2,
   MapPin,
   Maximize,
@@ -18,7 +17,6 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import {
-  appendOrder,
   clearCart,
   readCart,
   subscribeCart,
@@ -53,22 +51,18 @@ interface MenuItem {
   description: string;
   price: number;
   category: string;
+  imagePath?: string;
 }
 
-interface ZoneData {
+interface VenueData {
   id: string;
+  slug: string;
   name: string;
+  branchName: string;
   floorWidth: number;
   floorHeight: number;
   outline: FloorPoint[];
   elements: PlacedElement[];
-}
-
-interface VenueData {
-  slug: string;
-  name: string;
-  branchName: string;
-  zones: ZoneData[];
   categories: string[];
   menuItems: MenuItem[];
 }
@@ -113,6 +107,8 @@ const defaultCheckout: CheckoutState = {
   cardLastFour: "",
 };
 
+const AR_MENU_URL = "https://ar-menu-one.vercel.app/";
+
 function outlineToPath(points: FloorPoint[]): string {
   if (points.length < 3) return "";
   return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ") + " Z";
@@ -141,14 +137,23 @@ function createOrderId() {
   return `SOC-${rand}`;
 }
 
+function isMissingCreateOrderRpc(error: { message?: string; code?: string } | null) {
+  if (!error) return false;
+
+  return (
+    error.code === "PGRST202" ||
+    error.message?.includes("Could not find the function public.create_order_with_items") === true
+  );
+}
+
 export default function VenuePage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string;
 
   const [venue, setVenue] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [activeZoneIndex, setActiveZoneIndex] = useState(0);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>(defaultCheckout);
   const [submittingOrder, setSubmittingOrder] = useState(false);
@@ -170,62 +175,71 @@ export default function VenuePage() {
         .single();
 
       if (!venueRow) {
+        if (slug === "demo-venue") {
+          const { data: venues } = await publicSupabase
+            .from("venues")
+            .select("slug")
+            .order("name", { ascending: true })
+            .limit(1);
+
+          const fallbackVenue = venues?.find((entry) => entry.slug);
+          if (fallbackVenue?.slug) {
+            router.replace(`/v/${fallbackVenue.slug}`);
+            return;
+          }
+        }
+
         setLoading(false);
         return;
       }
 
-      const { data: zoneRows } = await publicSupabase
+      const { data: zone } = await publicSupabase
         .from("zones")
-        .select("id, name, floor_width, floor_height, floor_outline")
+        .select("id, floor_width, floor_height, floor_outline")
         .eq("venue_id", venueRow.id)
-        .order("sort_order");
+        .order("sort_order")
+        .limit(1)
+        .single();
 
-      const zones: ZoneData[] = [];
-      for (const zr of (zoneRows ?? [])) {
+      let elements: PlacedElement[] = [];
+      if (zone) {
         const { data: tables } = await publicSupabase
           .from("tables")
           .select("identifier, seat_count, shape, pos_x, pos_y, rotation")
-          .eq("zone_id", zr.id);
+          .eq("zone_id", zone.id);
 
         const { data: structural } = await publicSupabase
           .from("structural_elements")
           .select("element_type, label, pos_x, pos_y, rotation, size_w, size_h")
-          .eq("zone_id", zr.id);
+          .eq("zone_id", zone.id);
 
-        zones.push({
-          id: zr.id,
-          name: zr.name,
-          floorWidth: zr.floor_width ?? 800,
-          floorHeight: zr.floor_height ?? 600,
-          outline: (zr.floor_outline as FloorPoint[]) ?? defaultOutline,
-          elements: [
-            ...(tables ?? []).map((table) => ({
-              id: table.identifier,
-              kind: "table" as const,
-              type: table.shape,
-              x: table.pos_x,
-              y: table.pos_y,
-              rotation: table.rotation,
-              seats: table.seat_count,
-            })),
-            ...(structural ?? []).map((element, index) => ({
-              id:
-                element.element_type === "bar"
-                  ? `BAR-${String(index + 1).padStart(2, "0")}`
-                  : element.element_type === "entrance"
-                    ? `ENT-${String(index + 1).padStart(2, "0")}`
-                    : `W-${String(index + 1).padStart(2, "0")}`,
-              kind: "structural" as const,
-              type: element.element_type,
-              x: element.pos_x,
-              y: element.pos_y,
-              rotation: element.rotation,
-              label: element.label || undefined,
-              w: element.size_w ?? undefined,
-              h: element.size_h ?? undefined,
-            })),
-          ],
-        });
+        elements = [
+          ...(tables ?? []).map((table) => ({
+            id: table.identifier,
+            kind: "table" as const,
+            type: table.shape,
+            x: table.pos_x,
+            y: table.pos_y,
+            rotation: table.rotation,
+            seats: table.seat_count,
+          })),
+          ...(structural ?? []).map((element, index) => ({
+            id:
+              element.element_type === "bar"
+                ? `BAR-${String(index + 1).padStart(2, "0")}`
+                : element.element_type === "entrance"
+                  ? `ENT-${String(index + 1).padStart(2, "0")}`
+                  : `W-${String(index + 1).padStart(2, "0")}`,
+            kind: "structural" as const,
+            type: element.element_type,
+            x: element.pos_x,
+            y: element.pos_y,
+            rotation: element.rotation,
+            label: element.label || undefined,
+            w: element.size_w ?? undefined,
+            h: element.size_h ?? undefined,
+          })),
+        ];
       }
 
       const { data: categoryRows } = await publicSupabase
@@ -243,7 +257,7 @@ export default function VenuePage() {
       if (categoryIds.length > 0) {
         const { data: menuRows } = await publicSupabase
           .from("menu_items")
-          .select("id, category_id, name, description, price, is_active, sort_order")
+          .select("id, category_id, name, description, price, is_active, image_path, sort_order")
           .in("category_id", categoryIds)
           .eq("is_active", true)
           .order("sort_order", { ascending: true });
@@ -254,14 +268,19 @@ export default function VenuePage() {
           description: row.description ?? "",
           price: Number(row.price),
           category: categoriesById.get(row.category_id) ?? "Other",
+          imagePath: row.image_path ?? undefined,
         }));
       }
 
       setVenue({
+        id: venueRow.id,
         slug: venueRow.slug,
         name: venueRow.name,
         branchName: venueRow.branch_name ?? "Main Floor",
-        zones,
+        floorWidth: zone?.floor_width ?? 800,
+        floorHeight: zone?.floor_height ?? 600,
+        outline: (zone?.floor_outline as FloorPoint[]) ?? defaultOutline,
+        elements,
         categories: (categoryRows ?? [])
           .map((category) => category.name)
           .filter((categoryName) => mappedMenu.some((item) => item.category === categoryName)),
@@ -271,14 +290,11 @@ export default function VenuePage() {
     }
 
     load().catch(() => setLoading(false));
-  }, [slug]);
-
-  const activeZone = venue?.zones[activeZoneIndex] ?? null;
+  }, [router, slug]);
 
   const tableOptions = useMemo(
     () =>
-      (venue?.zones ?? [])
-        .flatMap((zone) => zone.elements)
+      (venue?.elements ?? [])
         .filter((element) => element.kind === "table")
         .map((table) => ({
           id: table.id,
@@ -374,19 +390,37 @@ export default function VenuePage() {
     setSubmittingOrder(true);
     setCheckoutError("");
 
+    const orderDbId = crypto.randomUUID();
+    const publicOrderCode = createOrderId();
+    const placedAt = new Date().toISOString();
+    const paymentLabel =
+      checkout.paymentMethod === "card"
+        ? `${trimmedCardholderName} •••• ${trimmedCardLastFour}`
+        : checkout.paymentMethod === "apple_pay"
+          ? "Apple Pay"
+          : "Pay At Venue";
+    const orderItemsPayload = cartItems.map((item) => ({
+      order_id: orderDbId,
+      menu_item_id: item.itemId,
+      name: item.name,
+      description: item.description,
+      category_name: item.category,
+      unit_price: item.price,
+      quantity: item.quantity,
+      line_total: Number((item.price * item.quantity).toFixed(2)),
+    }));
     const order: StoredOrder = {
-      id: createOrderId(),
+      id: publicOrderCode,
       venueSlug: venue.slug,
       venueName: venue.name,
-      createdAt: new Date().toISOString(),
+      createdAt: placedAt,
       customerName: trimmedName,
       customerEmail: trimmedEmail,
       notes: trimmedNotes,
       fulfillmentType: checkout.fulfillmentType,
       selectedTableId: checkout.fulfillmentType === "dine_in" ? selectedTable : null,
       paymentMethod: checkout.paymentMethod,
-      cardLabel:
-        checkout.paymentMethod === "card" ? `${trimmedCardholderName} •••• ${trimmedCardLastFour}` : null,
+      cardLabel: checkout.paymentMethod === "card" ? paymentLabel : null,
       subtotal,
       serviceFee,
       total,
@@ -394,7 +428,73 @@ export default function VenuePage() {
       status: "submitted",
     };
 
-    appendOrder(venue.slug, order);
+    const { error: submitError } = await publicSupabase.rpc("create_order_with_items", {
+      p_order_id: orderDbId,
+      p_venue_id: venue.id,
+      p_public_order_code: publicOrderCode,
+      p_customer_name: trimmedName,
+      p_customer_email: trimmedEmail,
+      p_notes: trimmedNotes,
+      p_fulfillment_type: checkout.fulfillmentType,
+      p_table_identifier: checkout.fulfillmentType === "dine_in" ? selectedTable : null,
+      p_payment_method: checkout.paymentMethod,
+      p_payment_label: paymentLabel,
+      p_subtotal: subtotal,
+      p_service_fee: serviceFee,
+      p_total: total,
+      p_placed_at: placedAt,
+      p_items: orderItemsPayload.map((item) => ({
+        menu_item_id: item.menu_item_id,
+        name: item.name,
+        description: item.description,
+        category_name: item.category_name,
+        unit_price: item.unit_price,
+        quantity: item.quantity,
+        line_total: item.line_total,
+      })),
+    });
+
+    let finalSubmitError = submitError;
+
+    if (isMissingCreateOrderRpc(submitError)) {
+      const { error: orderInsertError } = await publicSupabase.from("orders").insert({
+        id: orderDbId,
+        venue_id: venue.id,
+        public_order_code: publicOrderCode,
+        customer_name: trimmedName,
+        customer_email: trimmedEmail,
+        notes: trimmedNotes,
+        fulfillment_type: checkout.fulfillmentType,
+        table_identifier: checkout.fulfillmentType === "dine_in" ? selectedTable : null,
+        payment_method: checkout.paymentMethod,
+        payment_label: paymentLabel,
+        subtotal,
+        service_fee: serviceFee,
+        total,
+        status: "submitted",
+        placed_at: placedAt,
+        updated_at: placedAt,
+      });
+
+      if (orderInsertError) {
+        finalSubmitError = orderInsertError;
+      } else {
+        const { error: itemInsertError } = await publicSupabase
+          .from("order_items")
+          .insert(orderItemsPayload);
+
+        finalSubmitError = itemInsertError;
+      }
+    }
+
+    if (finalSubmitError) {
+      setCheckoutError(
+        finalSubmitError.message || "We couldn't place the order right now. Please try again.",
+      );
+      setSubmittingOrder(false);
+      return;
+    }
+
     clearCart(venue.slug);
     setSubmittedOrder(order);
     setCheckoutOpen(false);
@@ -436,35 +536,14 @@ export default function VenuePage() {
         </div>
       </header>
 
-      {venue.zones.length > 1 && (
-        <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-          <Layers size={14} className="text-on-surface-variant" />
-          {venue.zones.map((zone, i) => (
-            <button
-              key={zone.id}
-              onClick={() => { setActiveZoneIndex(i); setSelectedTable(null); }}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                i === activeZoneIndex
-                  ? "bg-primary text-on-primary"
-                  : "text-on-surface-variant hover:bg-surface-container-low"
-              }`}
-            >
-              {zone.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {activeZone && (
-        <ReadOnlyCanvas
-          key={activeZone.id}
-          outline={activeZone.outline}
-          elements={activeZone.elements}
-          floorWidth={activeZone.floorWidth}
-          floorHeight={activeZone.floorHeight}
-          selectedTable={selectedTable}
-          onSelectTable={setSelectedTable}
-        />
-      )}
+      <ReadOnlyCanvas
+        outline={venue.outline}
+        elements={venue.elements}
+        floorWidth={venue.floorWidth}
+        floorHeight={venue.floorHeight}
+        selectedTable={selectedTable}
+        onSelectTable={setSelectedTable}
+      />
 
       <section className="flex-1 px-4 pb-6">
         <div className="mb-3 flex items-end justify-between gap-4">
@@ -474,15 +553,24 @@ export default function VenuePage() {
               Add dishes to cart, then head to checkout.
             </p>
           </div>
-          <button
-            type="button"
-            data-testid="open-cart-button"
-            onClick={() => setCheckoutOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-4 py-2 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container-highest"
-          >
-            <ShoppingBag size={16} />
-            {cartCount} item{cartCount === 1 ? "" : "s"}
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href={AR_MENU_URL}
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
+            >
+              <Maximize size={16} />
+              View In AR
+            </a>
+            <button
+              type="button"
+              data-testid="open-cart-button"
+              onClick={() => setCheckoutOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-4 py-2 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container-highest"
+            >
+              <ShoppingBag size={16} />
+              {cartCount} item{cartCount === 1 ? "" : "s"}
+            </button>
+          </div>
         </div>
 
         {venue.menuItems.length === 0 ? (
@@ -506,7 +594,14 @@ export default function VenuePage() {
                           className="rounded-2xl bg-surface-container-low px-4 py-4"
                           data-testid={`menu-item-${item.id}`}
                         >
-                          <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-4">
+                            {item.imagePath ? (
+                              <img
+                                src={item.imagePath}
+                                alt={item.name}
+                                className="h-20 w-20 shrink-0 rounded-2xl object-cover"
+                              />
+                            ) : null}
                             <div className="min-w-0 flex-1">
                               <h4 className="text-sm font-bold text-on-surface">{item.name}</h4>
                               <p className="mt-1 text-xs text-on-surface-variant">

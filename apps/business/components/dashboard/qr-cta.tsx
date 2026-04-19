@@ -9,9 +9,13 @@ interface QrCtaProps {
   venueName?: string;
 }
 
-export function QrCta({ venueSlug = "demo-venue", venueName = "The Modern Hearth" }: QrCtaProps) {
+export function QrCta({ venueSlug, venueName }: QrCtaProps) {
   const [open, setOpen] = useState(false);
-  const customerUrl = typeof window !== "undefined" ? `${window.location.origin}/c/${venueSlug}` : "";
+  const canOpen = Boolean(venueSlug && venueName);
+  const customerUrl =
+    typeof window !== "undefined" && venueSlug
+      ? `${(process.env.NEXT_PUBLIC_CUSTOMER_APP_URL || window.location.origin).replace(/\/$/, "")}/v/${venueSlug}`
+      : "";
   const printRef = useRef<HTMLDivElement>(null);
 
   function handlePrint() {
@@ -49,8 +53,10 @@ export function QrCta({ venueSlug = "demo-venue", venueName = "The Modern Hearth
   return (
     <>
       <div
-        onClick={() => setOpen(true)}
-        className="bg-secondary-container rounded-xl p-6 relative overflow-hidden group cursor-pointer"
+        onClick={() => {
+          if (canOpen) setOpen(true);
+        }}
+        className={`bg-secondary-container rounded-xl p-6 relative overflow-hidden group ${canOpen ? "cursor-pointer" : "opacity-70"}`}
       >
         <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-primary-container rounded-full opacity-20 group-hover:scale-150 transition-transform duration-700 ease-out" />
         <div className="relative z-10">
@@ -59,10 +65,12 @@ export function QrCta({ venueSlug = "demo-venue", venueName = "The Modern Hearth
             Print Customer QR Code
           </h3>
           <p className="text-sm text-on-secondary-container/80 mt-1 mb-4">
-            Generate a unique QR code for table ordering and digital loyalty.
+            {canOpen
+              ? "Generate a unique QR code for table ordering and digital loyalty."
+              : "Create a venue first so Socialize has a real customer slug to print."}
           </p>
           <span className="inline-flex items-center gap-1 text-sm font-bold text-on-secondary-container">
-            Print Now
+            {canOpen ? "Print Now" : "Venue Required"}
           </span>
         </div>
       </div>
