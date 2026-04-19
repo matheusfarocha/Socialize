@@ -19,7 +19,7 @@ export function BarChart({
   data,
   yLabels = ["$1k", "$750", "$500", "$250", "$0"],
 }: BarChartProps) {
-  const maxValue = Math.max(1, ...data.flatMap((point) => [point.current, point.previous]));
+  const maxValue = Math.max(1, ...data.map((point) => point.current));
 
   return (
     <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-6 flex flex-col min-h-0">
@@ -43,10 +43,6 @@ export function BarChart({
         <div className="w-full flex justify-between items-end pl-12 h-full gap-2">
           {data.map((d) => (
             <div key={d.day} className="w-full relative group h-full">
-              <div
-                className="absolute bottom-0 w-full bg-primary-container/45 rounded-t-md"
-                style={{ height: `${Math.max((d.previous / maxValue) * 100, 0)}%` }}
-              />
               <div
                 className="absolute bottom-0 w-full bg-primary rounded-t-md transition-all"
                 style={{ height: `${Math.max((d.current / maxValue) * 100, 0)}%` }}
