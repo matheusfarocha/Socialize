@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   Coffee,
+  Layers,
   Loader2,
   MapPin,
   Maximize,
@@ -55,15 +56,21 @@ interface MenuItem {
   imagePath?: string;
 }
 
+interface ZoneData {
+  id: string;
+  name: string;
+  floorWidth: number;
+  floorHeight: number;
+  outline: FloorPoint[];
+  elements: PlacedElement[];
+}
+
 interface VenueData {
   id: string;
   slug: string;
   name: string;
   branchName: string;
-  floorWidth: number;
-  floorHeight: number;
-  outline: FloorPoint[];
-  elements: PlacedElement[];
+  zones: ZoneData[];
   categories: string[];
   menuItems: MenuItem[];
 }
@@ -155,6 +162,7 @@ export default function VenuePage() {
   const [venue, setVenue] = useState<VenueData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [activeZoneIndex, setActiveZoneIndex] = useState(0);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>(defaultCheckout);
   const [submittingOrder, setSubmittingOrder] = useState(false);
@@ -195,53 +203,58 @@ export default function VenuePage() {
         return;
       }
 
-      const { data: zone } = await publicSupabase
+      const { data: zoneRows } = await publicSupabase
         .from("zones")
-        .select("id, floor_width, floor_height, floor_outline")
+        .select("id, name, floor_width, floor_height, floor_outline")
         .eq("venue_id", venueRow.id)
-        .order("sort_order")
-        .limit(1)
-        .single();
+        .order("sort_order");
 
-      let elements: PlacedElement[] = [];
-      if (zone) {
+      const zones: ZoneData[] = [];
+      for (const zr of (zoneRows ?? [])) {
         const { data: tables } = await publicSupabase
           .from("tables")
           .select("identifier, seat_count, shape, pos_x, pos_y, rotation")
-          .eq("zone_id", zone.id);
+          .eq("zone_id", zr.id);
 
         const { data: structural } = await publicSupabase
           .from("structural_elements")
           .select("element_type, label, pos_x, pos_y, rotation, size_w, size_h")
-          .eq("zone_id", zone.id);
+          .eq("zone_id", zr.id);
 
-        elements = [
-          ...(tables ?? []).map((table) => ({
-            id: table.identifier,
-            kind: "table" as const,
-            type: table.shape,
-            x: table.pos_x,
-            y: table.pos_y,
-            rotation: table.rotation,
-            seats: table.seat_count,
-          })),
-          ...(structural ?? []).map((element, index) => ({
-            id:
-              element.element_type === "bar"
-                ? `BAR-${String(index + 1).padStart(2, "0")}`
-                : element.element_type === "entrance"
-                  ? `ENT-${String(index + 1).padStart(2, "0")}`
-                  : `W-${String(index + 1).padStart(2, "0")}`,
-            kind: "structural" as const,
-            type: element.element_type,
-            x: element.pos_x,
-            y: element.pos_y,
-            rotation: element.rotation,
-            label: element.label || undefined,
-            w: element.size_w ?? undefined,
-            h: element.size_h ?? undefined,
-          })),
-        ];
+        zones.push({
+          id: zr.id,
+          name: zr.name,
+          floorWidth: zr.floor_width ?? 800,
+          floorHeight: zr.floor_height ?? 600,
+          outline: (zr.floor_outline as FloorPoint[]) ?? defaultOutline,
+          elements: [
+            ...(tables ?? []).map((table) => ({
+              id: table.identifier,
+              kind: "table" as const,
+              type: table.shape,
+              x: table.pos_x,
+              y: table.pos_y,
+              rotation: table.rotation,
+              seats: table.seat_count,
+            })),
+            ...(structural ?? []).map((element, index) => ({
+              id:
+                element.element_type === "bar"
+                  ? `BAR-${String(index + 1).padStart(2, "0")}`
+                  : element.element_type === "entrance"
+                    ? `ENT-${String(index + 1).padStart(2, "0")}`
+                    : `W-${String(index + 1).padStart(2, "0")}`,
+              kind: "structural" as const,
+              type: element.element_type,
+              x: element.pos_x,
+              y: element.pos_y,
+              rotation: element.rotation,
+              label: element.label || undefined,
+              w: element.size_w ?? undefined,
+              h: element.size_h ?? undefined,
+            })),
+          ],
+        });
       }
 
       const { data: categoryRows } = await publicSupabase
@@ -279,10 +292,7 @@ export default function VenuePage() {
         slug: venueRow.slug,
         name: venueRow.name,
         branchName: venueRow.branch_name ?? "Main Floor",
-        floorWidth: zone?.floor_width ?? 800,
-        floorHeight: zone?.floor_height ?? 600,
-        outline: (zone?.floor_outline as FloorPoint[]) ?? defaultOutline,
-        elements,
+        zones,
         categories: (categoryRows ?? [])
           .map((category) => category.name)
           .filter((categoryName) => mappedMenu.some((item) => item.category === categoryName)),
@@ -294,6 +304,8 @@ export default function VenuePage() {
 
     load().catch(() => setLoading(false));
   }, [router, slug]);
+
+  const activeZone = venue?.zones[activeZoneIndex] ?? null;
 
   useEffect(() => {
     if (!venue?.id) return;
@@ -331,7 +343,8 @@ export default function VenuePage() {
 
   const tableOptions = useMemo(
     () =>
-      (venue?.elements ?? [])
+      (venue?.zones ?? [])
+        .flatMap((zone) => zone.elements)
         .filter((element) => element.kind === "table")
         .map((table) => ({
           id: table.id,
@@ -583,14 +596,39 @@ export default function VenuePage() {
         </div>
       </header>
 
-      <ReadOnlyCanvas
-        outline={venue.outline}
-        elements={venue.elements}
-        floorWidth={venue.floorWidth}
-        floorHeight={venue.floorHeight}
-        selectedTable={selectedTable}
-        onSelectTable={setSelectedTable}
-      />
+      {venue.zones.length > 1 && (
+        <div className="shrink-0 px-4 pt-3 pb-1 flex items-center gap-2">
+          <Layers size={14} className="text-on-surface-variant" />
+          {venue.zones.map((zone, i) => (
+            <button
+              key={zone.id}
+              onClick={() => {
+                setActiveZoneIndex(i);
+                setSelectedTable(null);
+              }}
+              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                i === activeZoneIndex
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:bg-surface-container-low"
+              }`}
+            >
+              {zone.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeZone && (
+        <ReadOnlyCanvas
+          key={activeZone.id}
+          outline={activeZone.outline}
+          elements={activeZone.elements}
+          floorWidth={activeZone.floorWidth}
+          floorHeight={activeZone.floorHeight}
+          selectedTable={selectedTable}
+          onSelectTable={setSelectedTable}
+        />
+      )}
 
       <section className="flex-1 px-4 pb-6">
         <div className="mb-3 flex items-end justify-between gap-4">
