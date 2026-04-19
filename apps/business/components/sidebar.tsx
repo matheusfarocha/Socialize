@@ -9,19 +9,15 @@ import {
   BarChart3,
   Armchair,
   UtensilsCrossed,
-  Users,
-  Package,
   Settings,
   LogOut,
 } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Insights", href: "/insights", icon: BarChart3 },
-  { label: "Floor Plan", href: "/floor-plan", icon: Armchair },
   { label: "Menu", href: "/menu", icon: UtensilsCrossed },
-  { label: "Staff", href: "/staff", icon: Users },
-  { label: "Inventory", href: "/inventory", icon: Package },
+  { label: "Floor Plan", href: "/floor-plan", icon: Armchair },
+  { label: "Insights", href: "/insights", icon: BarChart3 },
 ];
 
 export function Sidebar() {
@@ -100,11 +96,6 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-3 px-4 py-2">
-        <div className="w-8 h-8 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-headline font-bold text-sm">
-          MP
-        </div>
-      </div>
     </nav>
   );
 }
